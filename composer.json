@@ -1,6 +1,7 @@
 {
   "name"        : "thegamepanel/panel",
   "type"        : "project",
+  "license"     : "MIT",
   "require"     : {
     "php"                      : "^8.5",
     "ext-pdo"                  : "*",

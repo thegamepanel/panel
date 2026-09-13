@@ -5,7 +5,6 @@
 ## Open-source game server management
 
 ![GitHub License](https://img.shields.io/github/license/thegamepanel/panel)
-![Packagist Version](https://img.shields.io/packagist/v/thegamepanel/engine)
 ![PHP Version](https://img.shields.io/badge/php-%3E%3D8.5-777BB4?logo=php&logoColor=white)
 [![codecov](https://codecov.io/github/thegamepanel/panel/graph/badge.svg?token=CS2F99WQSJ)](https://codecov.io/github/thegamepanel/panel)
 

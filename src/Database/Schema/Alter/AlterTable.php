@@ -94,7 +94,7 @@ class AlterTable implements Schema
      *
      * @param string $newName
      *
-     * @return $this
+     * @return static
      */
     public function rename(string $newName): static
     {
@@ -108,7 +108,7 @@ class AlterTable implements Schema
      *
      * @param Column|Index ...$new
      *
-     * @return $this
+     * @return static
      */
     public function add(Column|Index ...$new): static
     {
@@ -128,7 +128,7 @@ class AlterTable implements Schema
      *
      * @param Column ...$columns
      *
-     * @return $this
+     * @return static
      */
     public function modify(Column ...$columns): static
     {
@@ -141,6 +141,8 @@ class AlterTable implements Schema
      * Drop columns, indexes, primary keys, and foreign keys from the table.
      *
      * @param Drop<'COLUMN'|'INDEX'|'FOREIGN KEY'|'PRIMARY KEY'> ...$drops
+     *
+     * @return static
      */
     public function drop(Drop ...$drops): static
     {
@@ -167,7 +169,7 @@ class AlterTable implements Schema
      * @param string $column
      * @param string $newColumn
      *
-     * @return $this
+     * @return static
      */
     public function move(string $column, string $newColumn): static
     {

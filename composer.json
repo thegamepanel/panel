@@ -1,6 +1,6 @@
 {
-  "name"        : "thegamepanel/engine",
-  "type"        : "library",
+  "name"        : "thegamepanel/panel",
+  "type"        : "project",
   "require"     : {
     "php"                      : "^8.5",
     "ext-pdo"                  : "*",

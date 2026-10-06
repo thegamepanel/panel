@@ -1,4 +1,4 @@
-<img src="logo.png" alt="The Game Panel">
+<img src="thegamepanel-banner.png" alt="The Game Panel">
 
 # The Game Panel
 

@@ -135,24 +135,6 @@ final class InstanceCache
     }
 
     /**
-     * Check if an instance is in the cache
-     *
-     * @template TClass of object
-     *
-     * @param class-string<TClass> $class
-     * @param string|null          $name
-     * @param class-string|null    $qualifier
-     *
-     * @return bool
-     */
-    public function has(string $class, ?string $name = null, ?string $qualifier = null): bool
-    {
-        // Rather than duplicate the logic, or have to abstract it out, we'll
-        // just call get and check if the result is null.
-        return $this->get($class, $name, $qualifier) !== null;
-    }
-
-    /**
      * Get an instance for storage.
      *
      * If the cache is weak the instance is wrapped in {@see WeakReference},

@@ -4,16 +4,19 @@ declare(strict_types=1);
 namespace Tests\Unit\Container\Exceptions;
 
 use Engine\Container\Attributes\NoResolution;
+use Engine\Container\Contracts\ContainerException;
 use Engine\Container\Exceptions\BindingNotFoundException;
 use Engine\Container\Exceptions\DependencyResolutionException;
 use Engine\Container\Exceptions\InvalidClassException;
 use Engine\Container\Exceptions\InvalidFunctionException;
 use Engine\Container\Exceptions\InvalidInvocationException;
 use Engine\Container\Exceptions\InvalidMethodException;
+use Engine\Container\Exceptions\InvalidResolutionException;
 use Engine\Container\Exceptions\InvalidResolverException;
 use Engine\Container\Exceptions\MethodCallException;
 use Engine\Container\Exceptions\NotInstantiableException;
 use Engine\Container\Exceptions\UnresolvableClassException;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -21,6 +24,29 @@ use PHPUnit\Framework\TestCase;
 #[Group('unit'), Group('container'), Group('exceptions')]
 class ExceptionsTest extends TestCase
 {
+    // -------------------------------------------------------------------------
+    // InvalidResolutionException
+    // -------------------------------------------------------------------------
+
+    /**
+     * - A class identified by both a name and a qualifier produces a message naming all
+     *   three, and the exception is an invalid argument that the container contract
+     *   covers.
+     */
+    #[Test]
+    public function invalidResolutionForDoubleIdentifiedClassProducesExpectedMessage(): void
+    {
+        $e = InvalidResolutionException::doubleIdentifiedClass('SomeClass', 'primary', 'SomeQualifier');
+
+        $this->assertInstanceOf(InvalidResolutionException::class, $e);
+        $this->assertInstanceOf(InvalidArgumentException::class, $e);
+        $this->assertInstanceOf(ContainerException::class, $e);
+        $this->assertSame(
+            'Class "SomeClass" cannot have both a name "primary", and qualifier "SomeQualifier".',
+            $e->getMessage(),
+        );
+    }
+
     // -------------------------------------------------------------------------
     // BindingNotFoundException
     // -------------------------------------------------------------------------

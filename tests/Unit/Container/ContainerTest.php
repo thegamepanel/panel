@@ -179,6 +179,21 @@ class ContainerTest extends TestCase
         $this->assertNotSame($first, $second);
     }
 
+    /**
+     * - A class with no binding is shared, so a second resolution returns the instance
+     *   the first constructed.
+     */
+    #[Test]
+    public function resolveClassWithNoBindingReturnsSameInstanceOnSubsequentCalls(): void
+    {
+        $container = $this->buildContainerWith();
+
+        $first  = $container->resolve(Resolution::for(ClassWithMethods::class));
+        $second = $container->resolve(Resolution::for(ClassWithMethods::class));
+
+        $this->assertSame($first, $second);
+    }
+
     // -------------------------------------------------------------------------
     // Binding dispatch: factory / instance / concrete
     // -------------------------------------------------------------------------
@@ -337,6 +352,74 @@ class ContainerTest extends TestCase
         $liminalInstance = $container->resolve(Resolution::for(ClassWithMethods::class)->liminal());
 
         $this->assertNotSame($sharedInstance, $liminalInstance);
+    }
+
+    /**
+     * - A liminal resolution with a name is cached under the name, so a second resolve
+     *   finds it while the instance is alive.
+     */
+    #[Test]
+    public function resolveWithNamedLiminalResolutionReturnsSameInstanceWhileAlive(): void
+    {
+        $namedBinding = new Binding(ClassWithMethods::class, shared: true);
+        $mainBinding  = new Binding(ClassWithMethods::class, namedMap: ['primary' => $namedBinding]);
+        $container    = $this->buildContainerWith($mainBinding);
+
+        $first  = $container->resolve(Resolution::for(ClassWithMethods::class)->named('primary')->liminal());
+        $second = $container->resolve(Resolution::for(ClassWithMethods::class)->named('primary')->liminal());
+
+        $this->assertSame($first, $second);
+    }
+
+    /**
+     * - A liminal resolution with a qualifier is cached under the qualifier class, so a
+     *   second resolve finds it while the instance is alive.
+     */
+    #[Test]
+    public function resolveWithQualifiedLiminalResolutionReturnsSameInstanceWhileAlive(): void
+    {
+        $qualBinding = new Binding(ClassWithMethods::class, shared: true);
+        $mainBinding = new Binding(ClassWithMethods::class, qualifiedMap: [TestQualifier::class => $qualBinding]);
+        $container   = $this->buildContainerWith($mainBinding);
+
+        $first  = $container->resolve(Resolution::for(ClassWithMethods::class)->qualifiedBy(new TestQualifier())->liminal());
+        $second = $container->resolve(Resolution::for(ClassWithMethods::class)->qualifiedBy(new TestQualifier())->liminal());
+
+        $this->assertSame($first, $second);
+    }
+
+    /**
+     * - A liminal resolution without a name does not return the instance a named
+     *   liminal resolution of the same class cached.
+     */
+    #[Test]
+    public function resolveWithLiminalResolutionDoesNotReturnNamedLiminalInstance(): void
+    {
+        $namedBinding = new Binding(ClassWithMethods::class, shared: true);
+        $mainBinding  = new Binding(ClassWithMethods::class, shared: true, namedMap: ['primary' => $namedBinding]);
+        $container    = $this->buildContainerWith($mainBinding);
+
+        $named = $container->resolve(Resolution::for(ClassWithMethods::class)->named('primary')->liminal());
+        $bare  = $container->resolve(Resolution::for(ClassWithMethods::class)->liminal());
+
+        $this->assertNotSame($named, $bare);
+    }
+
+    /**
+     * - A non-liminal resolution does not return the instance a liminal resolution of the
+     *   same class cached, the reverse of the previous test.
+     */
+    #[Test]
+    public function resolveWithSharedResolutionDoesNotReturnLiminalInstance(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(ClassWithMethods::class, shared: true),
+        );
+
+        $liminalInstance = $container->resolve(Resolution::for(ClassWithMethods::class)->liminal());
+        $sharedInstance  = $container->resolve(Resolution::for(ClassWithMethods::class));
+
+        $this->assertNotSame($liminalInstance, $sharedInstance);
     }
 
     // -------------------------------------------------------------------------

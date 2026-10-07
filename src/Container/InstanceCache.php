@@ -64,7 +64,7 @@ final class InstanceCache
      * @param TWeak $weak
      */
     private function __construct(
-        public readonly bool $weak,
+        private readonly bool $weak,
     ) {
     }
 

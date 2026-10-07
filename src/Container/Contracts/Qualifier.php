@@ -10,12 +10,4 @@ namespace Engine\Container\Contracts;
  */
 interface Qualifier
 {
-    /**
-     * Check if the qualifier is equal to another.
-     *
-     * @param Qualifier $other
-     *
-     * @return bool
-     */
-    public function equals(self $other): bool;
 }

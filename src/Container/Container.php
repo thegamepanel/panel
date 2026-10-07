@@ -21,7 +21,6 @@ use Engine\Container\Resolvers\ResolverCatalogue;
 use ReflectionException;
 use ReflectionFunctionAbstract;
 use ReflectionParameter;
-use WeakReference;
 
 final class Container
 {
@@ -33,24 +32,14 @@ final class Container
     private ResolverCatalogue $resolvers;
 
     /**
-     * @var array<class-string, object>
+     * @var InstanceCache<false>
      */
-    private array $instances = [];
+    private InstanceCache $instances;
 
     /**
-     * @var array<class-string, WeakReference<object>>
+     * @var InstanceCache<true>
      */
-    private array $liminalInstances = [];
-
-    /**
-     * @var array<class-string, array<string, object>>
-     */
-    private array $namedInstances = [];
-
-    /**
-     * @var array<class-string, array<array{Qualifier, object}>>
-     */
-    private array $qualifiedInstances = [];
+    private InstanceCache $liminalInstances;
 
     /**
      * @param ResolverCatalogue $resolvers
@@ -60,8 +49,10 @@ final class Container
         ResolverCatalogue $resolvers,
         BindingCatalogue  $bindings,
     ) {
-        $this->resolvers = $resolvers;
-        $this->bindings  = $bindings;
+        $this->resolvers        = $resolvers;
+        $this->bindings         = $bindings;
+        $this->instances        = InstanceCache::strong();
+        $this->liminalInstances = InstanceCache::weak();
     }
 
     /**
@@ -98,7 +89,7 @@ final class Container
 
         // Grab the values and flags.
         $instance       = $binding?->instance;
-        $shared         = $binding->shared ?? false;
+        $shared         = $binding->shared ?? true;
         $liminal        = ($binding->liminal ?? false) || $resolution->isLiminal();
         $resolvingClass = $resolution->class;
 
@@ -204,45 +195,19 @@ final class Container
      */
     private function getResolved(Resolution $resolution): ?object
     {
+        $instances = $resolution->isLiminal() ? $this->liminalInstances : $this->instances;
+
         if ($resolution->isNamed()) {
             /** @var TClass|null */
-            return $this->namedInstances[$resolution->class][$resolution->name] ?? null;
+            return $instances->get($resolution->class, name: $resolution->name);
         }
 
         if ($resolution->isQualified()) {
-            /** @var array<array{Qualifier, object}> $instances */
-            $instances = $this->qualifiedInstances[$resolution->class] ?? [];
-
-            /**
-             * @var Qualifier $qualifier
-             * @var object    $instance
-             *
-             * @noinspection PhpLoopCanBeConvertedToArrayFindInspection
-             */
-            foreach ($instances as [$qualifier, $instance]) {
-                if (
-                    $qualifier::class === $resolution->qualifier::class
-                    && $qualifier->equals($resolution->qualifier)
-                ) {
-                    /** @var TClass */
-                    return $instance;
-                }
-            }
-
-            return null;
-        }
-
-        if ($resolution->isLiminal()) {
-            if (isset($this->liminalInstances[$resolution->class])) {
-                /** @var TClass|null */
-                return $this->liminalInstances[$resolution->class]->get(); // @infection-ignore-all
-            }
-
-            return null;
+            return $instances->get($resolution->class, qualifier: $resolution->qualifier::class);
         }
 
         /** @var TClass|null */
-        return $this->instances[$resolution->class] ?? null;
+        return $instances->get($resolution->class);
     }
 
     /**
@@ -276,20 +241,15 @@ final class Container
      */
     private function storeResolved(Resolution $resolution, ?Binding $binding, object $instance, bool $liminal): object
     {
-        $class = $binding->abstract ?? $resolution->class;
-
-        if ($liminal) {
-            $this->liminalInstances[$class] = WeakReference::create($instance);
-
-            return $instance;
-        }
+        $class     = $binding->abstract ?? $resolution->class;
+        $instances = $liminal ? $this->liminalInstances : $this->instances;
 
         if ($resolution->isNamed()) {
-            $this->namedInstances[$class][$resolution->name] = $instance;
+            $instances->put($class, $instance, name: $resolution->name);
         } else if ($resolution->isQualified()) {
-            $this->qualifiedInstances[$class][] = [$resolution->qualifier, $instance];
+            $instances->put($class, $instance, qualifier: $resolution->qualifier::class);
         } else {
-            $this->instances[$class] = $instance;
+            $instances->put($class, $instance);
         }
 
         return $instance;

@@ -429,7 +429,9 @@ class ContainerTest extends TestCase
     /**
      * - A constructor parameter decorated with #[Liminal] causes the container to store
      *   the resolved dependency as a weak reference, so it is eligible for garbage
-     *   collection once all other strong references are released.
+     *   collection once all other strong references are released. The parent is bound
+     *   not shared, since a shared parent in the strong cache would hold the dependency
+     *   alive.
      */
     #[Test]
     public function resolveClassWithLiminalParameterStoresDependencyWeakly(): void
@@ -437,7 +439,10 @@ class ContainerTest extends TestCase
         $container = new Container(
             new ResolverCatalogue([Liminal::class => GenericResolver::class], GenericResolver::class),
             new BindingCatalogue(
-                [ClassWithProperty::class => new Binding(ClassWithProperty::class, shared: true)],
+                [
+                    ClassWithProperty::class          => new Binding(ClassWithProperty::class, shared: true),
+                    ClassWithLiminalDependency::class => new Binding(ClassWithLiminalDependency::class, shared: false),
+                ],
                 [],
                 [],
             ),
@@ -824,35 +829,23 @@ class ContainerTest extends TestCase
     }
 
     /**
-     * - When two qualified instances of the same qualifier class but with different
-     *   tag values are cached, resolving with a specific tag must return only the
-     *   matching instance. This verifies that both the class identity check (===) AND
-     *   the equals() check are required: using || instead of && would cause the first
-     *   cached entry (tag 'a') to be returned for any TaggedQualifier regardless of tag.
+     * - A qualified instance is cached under the qualifier's class. Any value the
+     *   qualifier carries is not part of the key, so two qualifiers of one class with
+     *   different values share one instance and equals() is never consulted.
      */
     #[Test]
-    public function resolveWithQualifiedResolutionUsesEqualityCheckNotJustClassCheck(): void
+    public function resolveWithQualifiedResolutionCachesByQualifierClass(): void
     {
-        $qualifierA = new TaggedQualifier('a');
-        $qualifierB = new TaggedQualifier('b');
-        // A single binding slot for TaggedQualifier::class — both 'a' and 'b' resolve
-        // through it, creating distinct shared instances stored under their respective
-        // qualifier instances.
         $tagBinding  = new Binding(ClassWithMethods::class, shared: true);
         $mainBinding = new Binding(ClassWithMethods::class, qualifiedMap: [
             TaggedQualifier::class => $tagBinding,
         ]);
         $container = $this->buildContainerWith($mainBinding);
 
-        // Prime the cache with qualifier 'a' — stored as [TaggedQualifier('a'), instanceA].
-        $instanceA = $container->resolve(Resolution::for(ClassWithMethods::class)->qualifiedBy($qualifierA));
+        $instanceA = $container->resolve(Resolution::for(ClassWithMethods::class)->qualifiedBy(new TaggedQualifier('a')));
+        $instanceB = $container->resolve(Resolution::for(ClassWithMethods::class)->qualifiedBy(new TaggedQualifier('b')));
 
-        // Resolve with qualifier 'b'. The cache loop encounters TaggedQualifier('a'):
-        // with &&  (correct): class matches but equals('b')=false → skip → no hit → fresh instance
-        // with ||  (mutant) : class matches → OR short-circuits   → returns instanceA (wrong!)
-        $instanceB = $container->resolve(Resolution::for(ClassWithMethods::class)->qualifiedBy($qualifierB));
-
-        $this->assertNotSame($instanceA, $instanceB);
+        $this->assertSame($instanceA, $instanceB);
     }
 
     /**

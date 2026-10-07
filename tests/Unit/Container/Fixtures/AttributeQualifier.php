@@ -15,8 +15,4 @@ use Engine\Container\Contracts\Qualifier;
 #[Attribute(Attribute::TARGET_PARAMETER)]
 class AttributeQualifier implements Qualifier
 {
-    public function equals(Qualifier $other): bool
-    {
-        return $other instanceof self;
-    }
 }

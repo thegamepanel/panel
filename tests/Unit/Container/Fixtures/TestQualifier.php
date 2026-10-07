@@ -7,8 +7,4 @@ use Engine\Container\Contracts\Qualifier;
 
 class TestQualifier implements Qualifier
 {
-    public function equals(Qualifier $other): bool
-    {
-        return $other instanceof self;
-    }
 }

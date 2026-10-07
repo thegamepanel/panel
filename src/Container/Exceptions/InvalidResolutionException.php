@@ -19,7 +19,7 @@ final class InvalidResolutionException extends InvalidArgumentException implemen
     public static function doubleIdentifiedClass(string $class, string $name, string $qualifier): self
     {
         return new self(sprintf(
-            'Class "%s" attempted to be resolved with both a name "%s", and qualifier "%s".',
+            'Class "%s" cannot have both a name "%s", and qualifier "%s".',
             $class,
             $name,
             $qualifier,

@@ -392,6 +392,32 @@ class ReflectionHelperTest extends TestCase
         $this->assertInstanceOf(Lazy::class, $result);
     }
     // -------------------------------------------------------------------------
+    // getFunctionNameFromReflection
+    // -------------------------------------------------------------------------
+
+    /**
+     * - A reflected method is named by its class and method.
+     */
+    #[Test]
+    public function getFunctionNameFromReflectionReturnsClassAndMethodForMethod(): void
+    {
+        $name = ReflectionHelper::getFunctionNameFromReflection(new ReflectionMethod(InvokableClass::class, '__invoke'));
+
+        $this->assertSame(InvokableClass::class . '::__invoke', $name);
+    }
+
+    /**
+     * - A reflected function is named by its function name alone.
+     */
+    #[Test]
+    public function getFunctionNameFromReflectionReturnsNameForFunction(): void
+    {
+        $name = ReflectionHelper::getFunctionNameFromReflection(new ReflectionFunction('strlen'));
+
+        $this->assertSame('strlen', $name);
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 

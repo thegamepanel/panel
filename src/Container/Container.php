@@ -12,6 +12,7 @@ use Engine\Container\Bindings\BindingCatalogue;
 use Engine\Container\Contracts\Qualifier;
 use Engine\Container\Contracts\Resolvable;
 use Engine\Container\Contracts\Resolver;
+use Engine\Container\Exceptions\BindingNotFoundException;
 use Engine\Container\Exceptions\DependencyResolutionException;
 use Engine\Container\Exceptions\InvalidInvocationException;
 use Engine\Container\Exceptions\MethodCallException;
@@ -21,6 +22,7 @@ use Engine\Container\Resolvers\ResolverCatalogue;
 use ReflectionException;
 use ReflectionFunctionAbstract;
 use ReflectionParameter;
+use Throwable;
 
 final class Container
 {
@@ -86,6 +88,18 @@ final class Container
             $resolution->isNamed() ? new Named($resolution->name) : null,
             $resolution->qualifier,
         );
+
+        if ($binding === null) {
+            // If there's no binding, but the resolution is named or qualified,
+            // it's an error. So we throw.
+            if ($resolution->isNamed()) {
+                throw BindingNotFoundException::named($resolution->class, $resolution->name);
+            }
+
+            if ($resolution->isQualified()) {
+                throw BindingNotFoundException::qualified($resolution->class, $resolution->qualifier::class);
+            }
+        }
 
         // Grab the values and flags.
         $instance       = $binding?->instance;
@@ -354,8 +368,20 @@ final class Container
 
             // Create a representation of the dependency and then resolve it.
             $dependency = $this->createDependency($parameter);
-            /** @phpstan-ignore argument.type */
-            $dependencies[$dependency->parameter] = $this->resolveDependency($dependency);
+
+            try {
+                /** @phpstan-ignore argument.type */
+                $dependencies[$dependency->parameter] = $this->resolveDependency($dependency);
+            } catch (Throwable $e) {
+                // If there's any sort of error, we wrap it in an exception that
+                // specifies both the parameter, and the function or method
+                // that it belongs to.
+                throw DependencyResolutionException::parameter(
+                    $parameter->name,
+                    ReflectionHelper::getFunctionNameFromReflection($reflector),
+                    previous: $e,
+                );
+            }
         }
 
         return $dependencies;

@@ -11,6 +11,7 @@ use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionFunction;
+use ReflectionFunctionAbstract;
 use ReflectionIntersectionType;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -183,6 +184,20 @@ final readonly class ReflectionHelper
 
         // Unreachable — all callable forms are handled above (string, Closure, invokable object, array).
         return 'function'; // @codeCoverageIgnore
+    }
+
+    /**
+     * Get the name of the function from the given reflection.
+     *
+     * @param ReflectionFunctionAbstract $reflector
+     *
+     * @return string
+     */
+    public static function getFunctionNameFromReflection(ReflectionFunctionAbstract $reflector): string
+    {
+        return $reflector instanceof ReflectionMethod
+            ? $reflector->class . '::' . $reflector->getName()
+            : $reflector->getName();
     }
 
     /**

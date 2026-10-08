@@ -8,6 +8,7 @@ use Engine\Container\Attributes\Liminal;
 use Engine\Container\Bindings\Binding;
 use Engine\Container\Bindings\BindingCatalogue;
 use Engine\Container\Container;
+use Engine\Container\Exceptions\BindingNotFoundException;
 use Engine\Container\Exceptions\DependencyResolutionException;
 use Engine\Container\Exceptions\InvalidInvocationException;
 use Engine\Container\Exceptions\NotInstantiableException;
@@ -21,6 +22,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use ReflectionFunction;
 use Tests\Unit\Container\Fixtures\AbstractInterface;
 use Tests\Unit\Container\Fixtures\AnotherTestQualifier;
 use Tests\Unit\Container\Fixtures\ClassWithDependency;
@@ -475,16 +477,28 @@ class ContainerTest extends TestCase
      * - A constructor parameter decorated with #[Ghost] on a built-in scalar type cannot
      *   be turned into a ghost object, so the GhostResolver must throw a
      *   DependencyResolutionException rather than silently producing an invalid instance.
+     *   The container wraps it in one naming the parameter and constructor, with the
+     *   resolver's exception as the previous.
      */
     #[Test]
     public function resolveClassWithGhostParameterOnNonClassTypeThrowsDependencyResolutionException(): void
     {
         $container = $this->buildContainerWithGhostResolver();
 
-        $this->expectException(DependencyResolutionException::class);
-        $this->expectExceptionMessage('string');
+        try {
+            $container->resolve(Resolution::for(ClassWithGhostScalarDependency::class));
+            $this->fail('Expected a DependencyResolutionException');
+        } catch (DependencyResolutionException $e) {
+            $this->assertSame(
+                sprintf('Cannot resolve the parameter "$name" of "%s::__construct".', ClassWithGhostScalarDependency::class),
+                $e->getMessage(),
+            );
 
-        $container->resolve(Resolution::for(ClassWithGhostScalarDependency::class));
+            $previous = $e->getPrevious();
+
+            $this->assertInstanceOf(DependencyResolutionException::class, $previous);
+            $this->assertSame('Cannot create a ghost object for "string".', $previous->getMessage());
+        }
     }
 
     /**
@@ -687,16 +701,28 @@ class ContainerTest extends TestCase
     /**
      * - A constructor parameter bearing both a #[Named] and a qualifier attribute is
      *   invalid; the container throws a DependencyResolutionException rather than
-     *   attempting to resolve by one or the other arbitrarily.
+     *   attempting to resolve by one or the other arbitrarily. The wrapping exception
+     *   names the parameter, and the previous says why it could not be resolved.
      */
     #[Test]
     public function resolveClassWithNamedAndQualifiedDependencyThrowsDependencyResolutionException(): void
     {
         $container = $this->buildContainer();
 
-        $this->expectException(DependencyResolutionException::class);
+        try {
+            $container->resolve(Resolution::for(ClassWithNamedAndQualifiedDependency::class));
+            $this->fail('Expected a DependencyResolutionException');
+        } catch (DependencyResolutionException $e) {
+            $this->assertSame(
+                sprintf('Cannot resolve the parameter "$dep" of "%s::__construct".', ClassWithNamedAndQualifiedDependency::class),
+                $e->getMessage(),
+            );
 
-        $container->resolve(Resolution::for(ClassWithNamedAndQualifiedDependency::class));
+            $previous = $e->getPrevious();
+
+            $this->assertInstanceOf(DependencyResolutionException::class, $previous);
+            $this->assertSame('Cannot resolve a dependency using both a name and a qualifier.', $previous->getMessage());
+        }
     }
 
     /**
@@ -727,6 +753,116 @@ class ContainerTest extends TestCase
         $this->expectException(NotInstantiableException::class);
 
         $container->resolve(Resolution::for(AbstractInterface::class));
+    }
+
+    /**
+     * - A named resolution of a class with no binding at all throws, since the name
+     *   selects nothing.
+     */
+    #[Test]
+    public function resolveNamedResolutionWithNoBindingThrowsBindingNotFoundException(): void
+    {
+        $container = $this->buildContainerWith();
+
+        $this->expectException(BindingNotFoundException::class);
+        $this->expectExceptionMessage(sprintf('No binding found for %s with name primary', ClassWithMethods::class));
+
+        $container->resolve(Resolution::for(ClassWithMethods::class)->named('primary'));
+    }
+
+    /**
+     * - A qualified resolution of a class with no binding at all throws, since the
+     *   qualifier selects nothing.
+     */
+    #[Test]
+    public function resolveQualifiedResolutionWithNoBindingThrowsBindingNotFoundException(): void
+    {
+        $container = $this->buildContainerWith();
+
+        $this->expectException(BindingNotFoundException::class);
+        $this->expectExceptionMessage(sprintf('No binding found for %s qualified by %s', ClassWithMethods::class, TestQualifier::class));
+
+        $container->resolve(Resolution::for(ClassWithMethods::class)->qualifiedBy(new TestQualifier()));
+    }
+
+    /**
+     * - A named resolution of a bound class with no child binding under that name throws
+     *   rather than falling back to constructing the class.
+     */
+    #[Test]
+    public function resolveNamedResolutionWithNoNamedBindingThrowsBindingNotFoundException(): void
+    {
+        $container = $this->buildContainerWith(new Binding(ClassWithMethods::class));
+
+        $this->expectException(BindingNotFoundException::class);
+        $this->expectExceptionMessage(sprintf('No binding found for %s with name primary', ClassWithMethods::class));
+
+        $container->resolve(Resolution::for(ClassWithMethods::class)->named('primary'));
+    }
+
+    /**
+     * - A qualified resolution of a bound class with no child binding under that qualifier
+     *   class throws rather than falling back to constructing the class.
+     */
+    #[Test]
+    public function resolveQualifiedResolutionWithNoQualifiedBindingThrowsBindingNotFoundException(): void
+    {
+        $container = $this->buildContainerWith(new Binding(ClassWithMethods::class));
+
+        $this->expectException(BindingNotFoundException::class);
+        $this->expectExceptionMessage(sprintf('No binding found for %s qualified by %s', ClassWithMethods::class, TestQualifier::class));
+
+        $container->resolve(Resolution::for(ClassWithMethods::class)->qualifiedBy(new TestQualifier()));
+    }
+
+    /**
+     * - A failure while resolving a constructor parameter is wrapped in an exception
+     *   naming the parameter and the constructor, with the original as the previous.
+     */
+    #[Test]
+    public function resolveClassWithNamedDependencyWithNoBindingWrapsBindingNotFoundException(): void
+    {
+        $container = $this->buildContainerWith();
+
+        try {
+            $container->resolve(Resolution::for(ClassWithNamedDependency::class));
+            $this->fail('Expected a DependencyResolutionException');
+        } catch (DependencyResolutionException $e) {
+            $this->assertSame(
+                sprintf('Cannot resolve the parameter "$dep" of "%s::__construct".', ClassWithNamedDependency::class),
+                $e->getMessage(),
+            );
+
+            $previous = $e->getPrevious();
+
+            $this->assertInstanceOf(BindingNotFoundException::class, $previous);
+            $this->assertSame(
+                sprintf('No binding found for %s with name primary', ClassWithMethods::class),
+                $previous->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * - A failure while resolving a closure parameter is wrapped the same way, naming the
+     *   closure as reflection names it.
+     */
+    #[Test]
+    public function invokeClosureWithUnresolvableParameterWrapsInDependencyResolutionException(): void
+    {
+        $container = $this->buildContainerWith();
+        $closure   = static fn (AbstractInterface $dep): AbstractInterface => $dep;
+
+        try {
+            $container->invoke(Invocation::callable($closure));
+            $this->fail('Expected a DependencyResolutionException');
+        } catch (DependencyResolutionException $e) {
+            $this->assertSame(
+                sprintf('Cannot resolve the parameter "$dep" of "%s".', new ReflectionFunction($closure)->getName()),
+                $e->getMessage(),
+            );
+            $this->assertInstanceOf(NotInstantiableException::class, $e->getPrevious());
+        }
     }
 
     // -------------------------------------------------------------------------

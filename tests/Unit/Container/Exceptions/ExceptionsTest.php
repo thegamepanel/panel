@@ -20,6 +20,7 @@ use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 #[Group('unit'), Group('container'), Group('exceptions')]
 class ExceptionsTest extends TestCase
@@ -264,6 +265,21 @@ class ExceptionsTest extends TestCase
 
         $this->assertInstanceOf(DependencyResolutionException::class, $e);
         $this->assertSame('Cannot resolve a dependency using both a name and a qualifier.', $e->getMessage());
+    }
+
+    /**
+     * - A parameter resolution failure names the parameter and its function, and carries
+     *   the failure it wraps as the previous exception.
+     */
+    #[Test]
+    public function dependencyParameterProducesExpectedMessageAndPrevious(): void
+    {
+        $previous = new RuntimeException('inner');
+        $e        = DependencyResolutionException::parameter('dep', 'SomeClass::__construct', $previous);
+
+        $this->assertInstanceOf(DependencyResolutionException::class, $e);
+        $this->assertSame('Cannot resolve the parameter "$dep" of "SomeClass::__construct".', $e->getMessage());
+        $this->assertSame($previous, $e->getPrevious());
     }
 
     // -------------------------------------------------------------------------

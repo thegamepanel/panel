@@ -69,8 +69,10 @@ final class Container
      */
     public function resolve(Resolution $resolution, bool $skipLazy = false): object
     {
+        $class = $this->bindings->resolveAlias($resolution->class);
+
         // If it has already been resolved, return it.
-        $instance = $this->getResolved($resolution);
+        $instance = $this->getResolved($resolution, $class);
 
         if ($instance !== null) {
             return $instance;
@@ -105,7 +107,7 @@ final class Container
         $instance       = $binding?->instance;
         $shared         = $binding->shared ?? true;
         $liminal        = ($binding->liminal ?? false) || $resolution->isLiminal();
-        $resolvingClass = $resolution->class;
+        $resolvingClass = $class;
 
         // If we have no instance but a binding, we can either invoke the
         // factory from the binding if one exists or use the concrete class.
@@ -159,7 +161,7 @@ final class Container
 
         // If it's shared, we need to store it and return it.
         if ($shared) {
-            return $this->storeResolved($resolution, $binding, $instance, $liminal);
+            return $this->storeResolved($resolution, $instance, $liminal, $class);
         }
 
         // Otherwise, we just return the instance.
@@ -203,25 +205,26 @@ final class Container
      *
      * @template TClass of object
      *
-     * @param Resolution<TClass> $resolution
+     * @param Resolution<TClass>   $resolution
+     * @param class-string<TClass> $class
      *
      * @return TClass|null
      */
-    private function getResolved(Resolution $resolution): ?object
+    private function getResolved(Resolution $resolution, string $class): ?object
     {
         $instances = $resolution->isLiminal() ? $this->liminalInstances : $this->instances;
 
         if ($resolution->isNamed()) {
             /** @var TClass|null */
-            return $instances->get($resolution->class, name: $resolution->name);
+            return $instances->get($class, name: $resolution->name);
         }
 
         if ($resolution->isQualified()) {
-            return $instances->get($resolution->class, qualifier: $resolution->qualifier::class);
+            return $instances->get($class, qualifier: $resolution->qualifier::class);
         }
 
         /** @var TClass|null */
-        return $instances->get($resolution->class);
+        return $instances->get($class);
     }
 
     /**
@@ -247,15 +250,14 @@ final class Container
      * @template TClass of object
      *
      * @param Resolution<TClass>   $resolution
-     * @param Binding<TClass>|null $binding
      * @param TClass               $instance
      * @param bool                 $liminal
+     * @param class-string<TClass> $class
      *
      * @return TClass
      */
-    private function storeResolved(Resolution $resolution, ?Binding $binding, object $instance, bool $liminal): object
+    private function storeResolved(Resolution $resolution, object $instance, bool $liminal, string $class): object
     {
-        $class     = $binding->abstract ?? $resolution->class;
         $instances = $liminal ? $this->liminalInstances : $this->instances;
 
         if ($resolution->isNamed()) {

@@ -82,7 +82,7 @@ final readonly class BindingCatalogue
      *
      * @return class-string<TClass>
      */
-    private function resolveAlias(string $class): string
+    public function resolveAlias(string $class): string
     {
         /** @noinspection ProperNullCoalescingOperatorUsageInspection */
         /** @var class-string<TClass> */

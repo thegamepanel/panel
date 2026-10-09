@@ -452,6 +452,182 @@ class ContainerTest extends TestCase
         $this->assertSame($first, $second);
     }
 
+    /**
+     * - Resolving a shared binding through its alias twice returns the same instance,
+     *   since the alias is normalised before the cache is read as well as written.
+     */
+    #[Test]
+    public function resolveViaAliasTwiceReturnsSameInstance(): void
+    {
+        $container = $this->buildContainerWithAlias(
+            new Binding(AbstractInterface::class, concrete: ConcreteClass::class, shared: true),
+            [ConcreteClass::class => AbstractInterface::class],
+        );
+
+        $first  = $container->resolve(Resolution::for(ConcreteClass::class));
+        $second = $container->resolve(Resolution::for(ConcreteClass::class));
+
+        $this->assertSame($first, $second);
+    }
+
+    /**
+     * - Resolving the abstract and then its alias returns the same instance, the mirror
+     *   of resolving the alias first.
+     */
+    #[Test]
+    public function resolveAbstractThenAliasReturnsSameInstance(): void
+    {
+        $container = $this->buildContainerWithAlias(
+            new Binding(AbstractInterface::class, concrete: ConcreteClass::class, shared: true),
+            [ConcreteClass::class => AbstractInterface::class],
+        );
+
+        $first  = $container->resolve(Resolution::for(AbstractInterface::class));
+        $second = $container->resolve(Resolution::for(ConcreteClass::class));
+
+        $this->assertSame($first, $second);
+    }
+
+    /**
+     * - A binding that is not shared still produces a new instance on each resolution
+     *   through its alias.
+     */
+    #[Test]
+    public function resolveNotSharedBindingViaAliasReturnsNewInstanceEachTime(): void
+    {
+        $container = $this->buildContainerWithAlias(
+            new Binding(AbstractInterface::class, concrete: ConcreteClass::class, shared: false),
+            [ConcreteClass::class => AbstractInterface::class],
+        );
+
+        $first  = $container->resolve(Resolution::for(ConcreteClass::class));
+        $second = $container->resolve(Resolution::for(ConcreteClass::class));
+
+        $this->assertNotSame($first, $second);
+    }
+
+    /**
+     * - A liminal resolution through an alias is cached under the abstract in the weak
+     *   cache, so a second liminal resolution through the alias finds it while alive.
+     */
+    #[Test]
+    public function resolveLiminalViaAliasTwiceReturnsSameInstanceWhileAlive(): void
+    {
+        $container = $this->buildContainerWithAlias(
+            new Binding(AbstractInterface::class, concrete: ConcreteClass::class, shared: true),
+            [ConcreteClass::class => AbstractInterface::class],
+        );
+
+        $first  = $container->resolve(Resolution::for(ConcreteClass::class)->liminal());
+        $second = $container->resolve(Resolution::for(ConcreteClass::class)->liminal());
+
+        $this->assertSame($first, $second);
+    }
+
+    /**
+     * - An alias of a binding with no concrete class constructs the binding's abstract,
+     *   not the alias, so an interface aliasing a bound class resolves to that class.
+     */
+    #[Test]
+    public function resolveAliasOfBindingWithNoConcreteConstructsTheAbstract(): void
+    {
+        $container = $this->buildContainerWithAlias(
+            new Binding(ConcreteClass::class, shared: true),
+            [AbstractInterface::class => ConcreteClass::class],
+        );
+
+        $result = $container->resolve(Resolution::for(AbstractInterface::class));
+
+        $this->assertInstanceOf(ConcreteClass::class, $result);
+    }
+
+    /**
+     * - An alias of an alias is replaced once, so the binding lookup finds nothing and the
+     *   class the first alias points to is constructed and shared under that class.
+     */
+    #[Test]
+    public function resolveAliasOfAliasConstructsAndSharesTheFirstTarget(): void
+    {
+        $container = $this->buildContainerWithAlias(
+            new Binding(ClassWithMethods::class, shared: true),
+            [
+                AbstractInterface::class => ConcreteClass::class,
+                ConcreteClass::class     => ClassWithMethods::class,
+            ],
+        );
+
+        $first  = $container->resolve(Resolution::for(AbstractInterface::class));
+        $second = $container->resolve(Resolution::for(AbstractInterface::class));
+
+        $this->assertInstanceOf(ConcreteClass::class, $first);
+        $this->assertSame($first, $second);
+    }
+
+    /**
+     * - A named resolution through an alias is cached under the abstract and the name, so
+     *   a named resolution of the abstract afterwards returns the same instance.
+     */
+    #[Test]
+    public function resolveNamedViaAliasThenAbstractReturnsSameInstance(): void
+    {
+        $named     = new Binding(AbstractInterface::class, concrete: ConcreteClass::class, shared: true);
+        $container = $this->buildContainerWithAlias(
+            new Binding(AbstractInterface::class, namedMap: ['primary' => $named]),
+            [ConcreteClass::class => AbstractInterface::class],
+        );
+
+        $first  = $container->resolve(Resolution::for(ConcreteClass::class)->named('primary'));
+        $second = $container->resolve(Resolution::for(AbstractInterface::class)->named('primary'));
+
+        $this->assertSame($first, $second);
+    }
+
+    /**
+     * - A named resolution through an alias with no child binding under that name throws,
+     *   naming the class as it was requested rather than the abstract it normalises to.
+     */
+    #[Test]
+    public function resolveNamedViaAliasWithNoNamedBindingNamesTheRequestedClass(): void
+    {
+        $container = $this->buildContainerWithAlias(
+            new Binding(AbstractInterface::class, concrete: ConcreteClass::class),
+            [ConcreteClass::class => AbstractInterface::class],
+        );
+
+        $this->expectException(BindingNotFoundException::class);
+        $this->expectExceptionMessage(sprintf('No binding found for %s with name primary', ConcreteClass::class));
+
+        $container->resolve(Resolution::for(ConcreteClass::class)->named('primary'));
+    }
+
+    /**
+     * - A shared binding with a factory, resolved twice through its alias, invokes the
+     *   factory once.
+     */
+    #[Test]
+    public function resolveFactoryBindingViaAliasTwiceInvokesFactoryOnce(): void
+    {
+        $calls     = 0;
+        $container = $this->buildContainerWithAlias(
+            new Binding(
+                AbstractInterface::class,
+                factory: static function () use (&$calls): ConcreteClass {
+                    ++$calls;
+
+                    return new ConcreteClass();
+                },
+                shared: true,
+            ),
+            [ConcreteClass::class => AbstractInterface::class],
+        );
+
+        $first  = $container->resolve(Resolution::for(ConcreteClass::class));
+        $second = $container->resolve(Resolution::for(ConcreteClass::class));
+
+        $this->assertSame($first, $second);
+        $this->assertSame(1, $calls);
+    }
+
     // -------------------------------------------------------------------------
     // Parameter-level Ghost and Liminal attributes
     // -------------------------------------------------------------------------
@@ -1103,6 +1279,17 @@ class ContainerTest extends TestCase
         return new Container(
             new ResolverCatalogue([], GenericResolver::class),
             new BindingCatalogue($map, [], []),
+        );
+    }
+
+    /**
+     * @param array<class-string, class-string> $aliases
+     */
+    private function buildContainerWithAlias(Binding $binding, array $aliases): Container
+    {
+        return new Container(
+            new ResolverCatalogue([], GenericResolver::class),
+            new BindingCatalogue([$binding->abstract => $binding], $aliases, []),
         );
     }
 

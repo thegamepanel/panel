@@ -74,10 +74,38 @@ final class Container
      */
     public function resolve(Resolution $resolution, bool $skipLazy = false): object
     {
+        // Resolve the actual class name, in case it's an alias.
         $class = $this->bindings->resolveAlias($resolution->class);
 
+        // Then we check if there's a binding available.
+        $binding = $this->bindings->get(
+            $resolution->class,
+            $resolution->isNamed() ? new Named($resolution->name) : null,
+            $resolution->qualifier,
+        );
+
+        // If there isn't, and there's a name or qualifier, we throw an
+        // exception, because we can't resolve it.
+        if ($binding === null) {
+            if ($resolution->isNamed()) {
+                throw BindingNotFoundException::named($resolution->class, $resolution->name);
+            }
+
+            if ($resolution->isQualified()) {
+                throw BindingNotFoundException::qualified($resolution->class, $resolution->qualifier::class);
+            }
+        }
+
+        // Determine whether the resolution is liminal, in order of precedence:
+        // 1. The resolution itself is liminal.
+        // 2. The binding is liminal.
+        // 3. The class or concrete class has the liminal attribute.
+        $liminal = $resolution->isLiminal()
+                   || ($binding->liminal ?? false)
+                   || $this->hasClassAttribute(Liminal::class, $class, $binding?->concrete);
+
         // If it has already been resolved, return it.
-        $instance = $this->getResolved($resolution, $class);
+        $instance = $this->getResolved($resolution, $class, $liminal);
 
         if ($instance !== null) {
             return $instance;
@@ -89,29 +117,9 @@ final class Container
             return $this->lazy($resolution);
         }
 
-        // If we're here, see if there's a binding.
-        $binding = $this->bindings->get(
-            $resolution->class,
-            $resolution->isNamed() ? new Named($resolution->name) : null,
-            $resolution->qualifier,
-        );
-
-        if ($binding === null) {
-            // If there's no binding, but the resolution is named or qualified,
-            // it's an error. So we throw.
-            if ($resolution->isNamed()) {
-                throw BindingNotFoundException::named($resolution->class, $resolution->name);
-            }
-
-            if ($resolution->isQualified()) {
-                throw BindingNotFoundException::qualified($resolution->class, $resolution->qualifier::class);
-            }
-        }
-
         // Grab the values and flags.
         $instance       = $binding?->instance;
         $shared         = $binding->shared ?? true;
-        $liminal        = ($binding->liminal ?? false) || $resolution->isLiminal();
         $resolvingClass = $class;
 
         // If we have no instance but a binding, we can either invoke the
@@ -154,10 +162,6 @@ final class Container
                 // But if there is, we need to invoke the constructor.
                 $instance = $this->invoke(Invocation::constructor($resolvingClass));
             }
-
-            // Finally, if the liminal flag isn't already set, we set it based
-            // on the presence of the Liminal attribute.
-            $liminal = $liminal || $this->hasClassAttribute(Liminal::class, $class, $binding?->concrete);
         }
 
         /**
@@ -214,12 +218,13 @@ final class Container
      *
      * @param Resolution<TClass>   $resolution
      * @param class-string<TClass> $class
+     * @param bool                 $liminal
      *
      * @return TClass|null
      */
-    private function getResolved(Resolution $resolution, string $class): ?object
+    private function getResolved(Resolution $resolution, string $class, bool $liminal): ?object
     {
-        $instances = $resolution->isLiminal() ? $this->liminalInstances : $this->instances;
+        $instances = $liminal ? $this->liminalInstances : $this->instances;
 
         if ($resolution->isNamed()) {
             /** @var TClass|null */

@@ -261,12 +261,12 @@ class ContainerTest extends TestCase
     // -------------------------------------------------------------------------
 
     /**
-     * - A binding with `liminal = true` stores the resolved instance in the weak
-     *   reference store rather than the shared instance store, so a non-liminal
-     *   resolution of the same class produces a fresh instance each time.
+     * - A binding marked liminal makes a resolution liminal without the resolution asking,
+     *   so a second resolve finds the instance while it is alive, and it is collected once
+     *   nothing else references it.
      */
     #[Test]
-    public function resolveWithLiminalBindingDoesNotCacheInSharedInstances(): void
+    public function resolveWithLiminalBindingReturnsSameInstanceWhileAlive(): void
     {
         $container = $this->buildContainerWith(
             new Binding(ClassWithMethods::class, liminal: true, shared: true),
@@ -275,7 +275,13 @@ class ContainerTest extends TestCase
         $first  = $container->resolve(Resolution::for(ClassWithMethods::class));
         $second = $container->resolve(Resolution::for(ClassWithMethods::class));
 
-        $this->assertNotSame($first, $second);
+        $this->assertSame($first, $second);
+
+        $weak = \WeakReference::create($first);
+        unset($first, $second);
+        gc_collect_cycles();
+
+        $this->assertNull($weak->get());
     }
 
     /**
@@ -325,12 +331,12 @@ class ContainerTest extends TestCase
     }
 
     /**
-     * - A class decorated with `#[Liminal]` is stored via a weak reference, so a
-     *   second resolution with a shared binding produces a fresh instance when the
-     *   non-liminal lookup path is used.
+     * - A class carrying `#[Liminal]` makes a resolution liminal without the resolution
+     *   asking, so a second resolve finds the instance while it is alive, and it is
+     *   collected once nothing else references it.
      */
     #[Test]
-    public function resolveLiminalClassStoresInstanceWeakly(): void
+    public function resolveLiminalClassReturnsSameInstanceWhileAlive(): void
     {
         $container = $this->buildContainerWith(
             new Binding(LiminalClass::class, shared: true),
@@ -339,9 +345,191 @@ class ContainerTest extends TestCase
         $first  = $container->resolve(Resolution::for(LiminalClass::class));
         $second = $container->resolve(Resolution::for(LiminalClass::class));
 
-        // Stored in liminalInstances (not instances), so non-liminal resolution
-        // cannot retrieve it and creates a fresh object each time.
+        $this->assertSame($first, $second);
+
+        $weak = \WeakReference::create($first);
+        unset($first, $second);
+        gc_collect_cycles();
+
+        $this->assertNull($weak->get());
+    }
+
+    /**
+     * - `#[Liminal]` on the concrete class of a binding applies when its abstract is
+     *   resolved, so a second resolve finds the instance while it is alive, and it is
+     *   collected once nothing else references it.
+     */
+    #[Test]
+    public function resolveAbstractWithLiminalConcreteReturnsSameInstanceWhileAlive(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(AbstractInterface::class, concrete: LiminalClass::class, shared: true),
+        );
+
+        $first  = $container->resolve(Resolution::for(AbstractInterface::class));
+        $second = $container->resolve(Resolution::for(AbstractInterface::class));
+
+        $this->assertSame($first, $second);
+
+        $weak = \WeakReference::create($first);
+        unset($first, $second);
+        gc_collect_cycles();
+
+        $this->assertNull($weak->get());
+    }
+
+    /**
+     * - `#[Liminal]` on the concrete class applies when the concrete is resolved through its
+     *   alias, sharing one entry with resolutions of the abstract, and the instance is
+     *   collected once nothing else references it.
+     */
+    #[Test]
+    public function resolveLiminalConcreteViaAliasSharesEntryWithAbstract(): void
+    {
+        $container = $this->buildContainerWithAlias(
+            new Binding(AbstractInterface::class, concrete: LiminalClass::class, shared: true),
+            [LiminalClass::class => AbstractInterface::class],
+        );
+
+        $first  = $container->resolve(Resolution::for(LiminalClass::class));
+        $second = $container->resolve(Resolution::for(AbstractInterface::class));
+
+        $this->assertSame($first, $second);
+
+        $weak = \WeakReference::create($first);
+        unset($first, $second);
+        gc_collect_cycles();
+
+        $this->assertNull($weak->get());
+    }
+
+    /**
+     * - `#[Liminal]` on the requested class applies to a factory binding, even though the
+     *   container never constructs the class, so the factory's instance is shared while
+     *   it is alive and collected once nothing else references it.
+     */
+    #[Test]
+    public function resolveFactoryBindingForLiminalClassReturnsSameInstanceWhileAlive(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(LiminalClass::class, factory: fn () => new LiminalClass(), shared: true),
+        );
+
+        $first  = $container->resolve(Resolution::for(LiminalClass::class));
+        $second = $container->resolve(Resolution::for(LiminalClass::class));
+
+        $this->assertSame($first, $second);
+
+        $weak = \WeakReference::create($first);
+        unset($first, $second);
+        gc_collect_cycles();
+
+        $this->assertNull($weak->get());
+    }
+
+    /**
+     * - A binding marked liminal but not shared returns a new instance each time, since
+     *   liminality only chooses the cache and never turns sharing on.
+     */
+    #[Test]
+    public function resolveWithUnsharedLiminalBindingReturnsNewInstanceEachTime(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(ClassWithMethods::class, liminal: true, shared: false),
+        );
+
+        $first  = $container->resolve(Resolution::for(ClassWithMethods::class));
+        $second = $container->resolve(Resolution::for(ClassWithMethods::class));
+
         $this->assertNotSame($first, $second);
+    }
+
+    /**
+     * - A named child binding marked liminal makes a named resolution liminal without the
+     *   resolution asking, so a second resolve finds the instance while it is alive, and
+     *   it is collected once nothing else references it.
+     */
+    #[Test]
+    public function resolveWithNamedLiminalBindingReturnsSameInstanceWhileAlive(): void
+    {
+        $namedBinding = new Binding(ClassWithMethods::class, liminal: true, shared: true);
+        $mainBinding  = new Binding(ClassWithMethods::class, namedMap: ['primary' => $namedBinding]);
+        $container    = $this->buildContainerWith($mainBinding);
+
+        $first  = $container->resolve(Resolution::for(ClassWithMethods::class)->named('primary'));
+        $second = $container->resolve(Resolution::for(ClassWithMethods::class)->named('primary'));
+
+        $this->assertSame($first, $second);
+
+        $weak = \WeakReference::create($first);
+        unset($first, $second);
+        gc_collect_cycles();
+
+        $this->assertNull($weak->get());
+    }
+
+    /**
+     * - A qualified child binding marked liminal makes a qualified resolution liminal
+     *   without the resolution asking, so a second resolve finds the instance while it is
+     *   alive, and it is collected once nothing else references it.
+     */
+    #[Test]
+    public function resolveWithQualifiedLiminalBindingReturnsSameInstanceWhileAlive(): void
+    {
+        $qualBinding = new Binding(ClassWithMethods::class, liminal: true, shared: true);
+        $mainBinding = new Binding(ClassWithMethods::class, qualifiedMap: [TestQualifier::class => $qualBinding]);
+        $container   = $this->buildContainerWith($mainBinding);
+
+        $first  = $container->resolve(Resolution::for(ClassWithMethods::class)->qualifiedBy(new TestQualifier()));
+        $second = $container->resolve(Resolution::for(ClassWithMethods::class)->qualifiedBy(new TestQualifier()));
+
+        $this->assertSame($first, $second);
+
+        $weak = \WeakReference::create($first);
+        unset($first, $second);
+        gc_collect_cycles();
+
+        $this->assertNull($weak->get());
+    }
+
+    /**
+     * - A named child binding does not take liminality from its parent binding, so a
+     *   named resolution of a non-liminal child is held strongly and is not collected.
+     */
+    #[Test]
+    public function resolveWithNamedBindingDoesNotInheritLiminalFromParent(): void
+    {
+        $namedBinding = new Binding(ClassWithMethods::class, shared: true);
+        $mainBinding  = new Binding(ClassWithMethods::class, namedMap: ['primary' => $namedBinding], liminal: true);
+        $container    = $this->buildContainerWith($mainBinding);
+
+        $first  = $container->resolve(Resolution::for(ClassWithMethods::class)->named('primary'));
+        $second = $container->resolve(Resolution::for(ClassWithMethods::class)->named('primary'));
+
+        $this->assertSame($first, $second);
+
+        $weak = \WeakReference::create($first);
+        unset($first, $second);
+        gc_collect_cycles();
+
+        $this->assertNotNull($weak->get());
+    }
+
+    /**
+     * - A resolution of a liminal binding and a liminal resolution of the same binding
+     *   share one entry, since both work out as liminal before the cache is read.
+     */
+    #[Test]
+    public function resolveWithLiminalBindingSharesEntryWithLiminalResolution(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(ClassWithMethods::class, liminal: true, shared: true),
+        );
+
+        $plain   = $container->resolve(Resolution::for(ClassWithMethods::class));
+        $liminal = $container->resolve(Resolution::for(ClassWithMethods::class)->liminal());
+
+        $this->assertSame($plain, $liminal);
     }
 
     /**
@@ -1111,6 +1299,59 @@ class ContainerTest extends TestCase
     }
 
     /**
+     * - A factory binding for a class that does not exist throws when resolved, even
+     *   though the container never constructs the class, because the requested class is
+     *   reflected for `#[Liminal]` before the cache is checked.
+     */
+    #[Test]
+    public function resolveFactoryBindingForNonexistentAbstractThrowsInvalidClassException(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding('Missing\Contract', factory: fn () => new ClassWithMethods()),
+        );
+
+        $this->expectException(InvalidClassException::class);
+        $this->expectExceptionMessage('The provided class Missing\Contract is not a valid class.');
+
+        $container->resolve(Resolution::for('Missing\Contract'));
+    }
+
+    /**
+     * - An instance binding for a class that does not exist throws when resolved, because
+     *   the requested class is reflected for `#[Liminal]` before the cache is checked.
+     */
+    #[Test]
+    public function resolveInstanceBindingForNonexistentAbstractThrowsInvalidClassException(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding('Missing\Contract', instance: new ClassWithMethods()),
+        );
+
+        $this->expectException(InvalidClassException::class);
+        $this->expectExceptionMessage('The provided class Missing\Contract is not a valid class.');
+
+        $container->resolve(Resolution::for('Missing\Contract'));
+    }
+
+    /**
+     * - A liminal resolution of a factory binding for a class that does not exist
+     *   resolves, because the resolution's own flag is checked before the class is
+     *   reflected for `#[Liminal]`. A failure here means the order of the liminality
+     *   checks has changed.
+     */
+    #[Test]
+    public function resolveLiminalResolutionOfFactoryBindingForNonexistentAbstractSkipsClassAttributes(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding('Missing\Contract', factory: fn () => new ClassWithMethods()),
+        );
+
+        $instance = $container->resolve(Resolution::for('Missing\Contract')->liminal());
+
+        $this->assertInstanceOf(ClassWithMethods::class, $instance);
+    }
+
+    /**
      * - Resolving an interface that has no binding and cannot be instantiated throws
      *   a NotInstantiableException, surfacing a clear error instead of a generic
      *   PHP reflection failure.
@@ -1183,6 +1424,38 @@ class ContainerTest extends TestCase
         $this->expectExceptionMessage(sprintf('No binding found for %s qualified by %s', ClassWithMethods::class, TestQualifier::class));
 
         $container->resolve(Resolution::for(ClassWithMethods::class)->qualifiedBy(new TestQualifier()));
+    }
+
+    /**
+     * - A lazy named resolution of a class with no binding throws when resolved, not when
+     *   its proxy is first used. A failure here means the binding lookup has moved below
+     *   the lazy proxy check.
+     */
+    #[Test]
+    public function resolveLazyNamedResolutionWithNoBindingThrowsBindingNotFoundException(): void
+    {
+        $container = $this->buildContainerWith();
+
+        $this->expectException(BindingNotFoundException::class);
+        $this->expectExceptionMessage(sprintf('No binding found for %s with name primary', ClassWithMethods::class));
+
+        $container->resolve(Resolution::for(ClassWithMethods::class)->named('primary')->lazily());
+    }
+
+    /**
+     * - A lazy qualified resolution of a class with no binding throws when resolved, not
+     *   when its proxy is first used. A failure here means the binding lookup has moved
+     *   below the lazy proxy check.
+     */
+    #[Test]
+    public function resolveLazyQualifiedResolutionWithNoBindingThrowsBindingNotFoundException(): void
+    {
+        $container = $this->buildContainerWith();
+
+        $this->expectException(BindingNotFoundException::class);
+        $this->expectExceptionMessage(sprintf('No binding found for %s qualified by %s', ClassWithMethods::class, TestQualifier::class));
+
+        $container->resolve(Resolution::for(ClassWithMethods::class)->qualifiedBy(new TestQualifier())->lazily());
     }
 
     /**

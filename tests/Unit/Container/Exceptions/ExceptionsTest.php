@@ -7,6 +7,7 @@ use Engine\Container\Attributes\NoResolution;
 use Engine\Container\Contracts\ContainerException;
 use Engine\Container\Exceptions\BindingNotFoundException;
 use Engine\Container\Exceptions\DependencyResolutionException;
+use Engine\Container\Exceptions\InvalidAttributeException;
 use Engine\Container\Exceptions\InvalidClassException;
 use Engine\Container\Exceptions\InvalidFunctionException;
 use Engine\Container\Exceptions\InvalidInvocationException;
@@ -25,6 +26,28 @@ use RuntimeException;
 #[Group('unit'), Group('container'), Group('exceptions')]
 class ExceptionsTest extends TestCase
 {
+    // -------------------------------------------------------------------------
+    // InvalidAttributeException
+    // -------------------------------------------------------------------------
+
+    /**
+     * - An attribute that is not a tracked marker produces a message naming it, and the
+     *   exception is an invalid argument that the container contract covers.
+     */
+    #[Test]
+    public function invalidAttributeNotMarkerProducesExpectedMessage(): void
+    {
+        $e = InvalidAttributeException::notMarker('SomeAttribute');
+
+        $this->assertInstanceOf(InvalidAttributeException::class, $e);
+        $this->assertInstanceOf(InvalidArgumentException::class, $e);
+        $this->assertInstanceOf(ContainerException::class, $e);
+        $this->assertSame(
+            'The attribute "SomeAttribute" is not a class-level marker the container tracks',
+            $e->getMessage(),
+        );
+    }
+
     // -------------------------------------------------------------------------
     // InvalidResolutionException
     // -------------------------------------------------------------------------

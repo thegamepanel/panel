@@ -201,6 +201,22 @@ final readonly class ReflectionHelper
     }
 
     /**
+     * @template TClass of object
+     *
+     * @param class-string<TClass>|ReflectionClass<TClass> $class
+     *
+     * @return array<ReflectionAttribute<*>>
+     */
+    public static function getClassAttributes(ReflectionClass|string $class): array
+    {
+        if (is_string($class)) {
+            $class = self::getClassReflector($class);
+        }
+
+        return $class->getAttributes();
+    }
+
+    /**
      * @template TAttribute of object
      *
      * @param ReflectionClass<*>|ReflectionMethod|ReflectionFunction|ReflectionParameter $reflector

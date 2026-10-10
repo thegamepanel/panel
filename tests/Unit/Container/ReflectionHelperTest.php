@@ -418,6 +418,47 @@ class ReflectionHelperTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // getClassAttributes
+    // -------------------------------------------------------------------------
+
+    /**
+     * - Given a class name, the class is reflected and its attributes returned.
+     */
+    #[Test]
+    public function getClassAttributesReturnsAttributesForClassName(): void
+    {
+        $attributes = ReflectionHelper::getClassAttributes(LazyClass::class);
+
+        $this->assertCount(1, $attributes);
+        $this->assertSame(Lazy::class, $attributes[0]->getName());
+    }
+
+    /**
+     * - Given a reflected class, its attributes are returned without reflecting again.
+     */
+    #[Test]
+    public function getClassAttributesReturnsAttributesForReflectionClass(): void
+    {
+        $attributes = ReflectionHelper::getClassAttributes(new ReflectionClass(LazyClass::class));
+
+        $this->assertCount(1, $attributes);
+        $this->assertSame(Lazy::class, $attributes[0]->getName());
+    }
+
+    /**
+     * - Given a class name that does not exist, an InvalidClassException is thrown.
+     */
+    #[Test]
+    public function getClassAttributesThrowsForNonexistentClass(): void
+    {
+        $this->expectException(InvalidClassException::class);
+        $this->expectExceptionMessage('The provided class Missing\Thing is not a valid class.');
+
+        /** @phpstan-ignore argument.type */
+        ReflectionHelper::getClassAttributes('Missing\Thing');
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 

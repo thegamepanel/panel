@@ -7,7 +7,6 @@ use Engine\Container\Attributes\Lazy;
 use Engine\Container\Attributes\Liminal;
 use Engine\Container\Attributes\Named;
 use Engine\Container\Attributes\NoResolution;
-use Engine\Container\Bindings\Binding;
 use Engine\Container\Bindings\BindingCatalogue;
 use Engine\Container\Contracts\Qualifier;
 use Engine\Container\Contracts\Resolvable;
@@ -44,6 +43,11 @@ final class Container
     private InstanceCache $liminalInstances;
 
     /**
+     * @var ClassAttributeCache
+     */
+    private ClassAttributeCache $classAttributeCache;
+
+    /**
      * @param ResolverCatalogue $resolvers
      * @param BindingCatalogue  $bindings
      */
@@ -51,10 +55,11 @@ final class Container
         ResolverCatalogue $resolvers,
         BindingCatalogue  $bindings,
     ) {
-        $this->resolvers        = $resolvers;
-        $this->bindings         = $bindings;
-        $this->instances        = InstanceCache::strong();
-        $this->liminalInstances = InstanceCache::weak();
+        $this->resolvers           = $resolvers;
+        $this->bindings            = $bindings;
+        $this->instances           = InstanceCache::strong();
+        $this->liminalInstances    = InstanceCache::weak();
+        $this->classAttributeCache = new ClassAttributeCache();
     }
 
     /**
@@ -125,12 +130,14 @@ final class Container
 
             // If we're here, and it has the 'no resolution' attribute, we can't
             // automatically resolve it, so it's an exception.
-            if (ReflectionHelper::getAttributeInstance($reflector, NoResolution::class) !== null) {
-                throw UnresolvableClassException::make($resolvingClass);
+            if ($this->hasClassAttribute(NoResolution::class, $class, $binding?->concrete)) {
+                throw UnresolvableClassException::make(
+                    $this->hasClassAttribute(NoResolution::class, $class) ? $class : $resolvingClass,
+                );
             }
 
             // If it has the lazy attribute, it needs a lazy resolution.
-            if ($skipLazy === false && ReflectionHelper::getAttributeInstance($reflector, Lazy::class) !== null) {
+            if ($skipLazy === false && $this->hasClassAttribute(Lazy::class, $class, $binding?->concrete)) {
                 return $this->lazy($resolution);
             }
 
@@ -150,7 +157,7 @@ final class Container
 
             // Finally, if the liminal flag isn't already set, we set it based
             // on the presence of the Liminal attribute.
-            $liminal = $liminal || (ReflectionHelper::getAttributeInstance($reflector, Liminal::class) !== null);
+            $liminal = $liminal || $this->hasClassAttribute(Liminal::class, $class, $binding?->concrete);
         }
 
         /**
@@ -467,5 +474,18 @@ final class Container
          * @var Resolver<TResolvable> $resolver
          */
         return $resolver;
+    }
+
+    /**
+     * Check if a class has a given marker attribute.
+     *
+     * @param class-string<NoResolution|Liminal|Lazy> $attribute
+     * @param class-string                            $class
+     * @param class-string|null                       $concrete
+     */
+    private function hasClassAttribute(string $attribute, string $class, ?string $concrete = null): bool
+    {
+        return $this->classAttributeCache->has($class, $attribute)
+               || ($concrete !== null && $this->classAttributeCache->has($concrete, $attribute));
     }
 }

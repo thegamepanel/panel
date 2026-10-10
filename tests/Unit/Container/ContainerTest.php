@@ -5,11 +5,13 @@ namespace Tests\Unit\Container;
 
 use Engine\Container\Attributes\Ghost;
 use Engine\Container\Attributes\Liminal;
+use Engine\Container\Attributes\NoResolution;
 use Engine\Container\Bindings\Binding;
 use Engine\Container\Bindings\BindingCatalogue;
 use Engine\Container\Container;
 use Engine\Container\Exceptions\BindingNotFoundException;
 use Engine\Container\Exceptions\DependencyResolutionException;
+use Engine\Container\Exceptions\InvalidClassException;
 use Engine\Container\Exceptions\InvalidInvocationException;
 use Engine\Container\Exceptions\NotInstantiableException;
 use Engine\Container\Exceptions\UnresolvableClassException;
@@ -40,10 +42,14 @@ use Tests\Unit\Container\Fixtures\ClassWithPrivateMethod;
 use Tests\Unit\Container\Fixtures\ClassWithProperty;
 use Tests\Unit\Container\Fixtures\ClassWithRequiredScalarParam;
 use Tests\Unit\Container\Fixtures\ClassWithScalarDefault;
+use Tests\Unit\Container\Fixtures\ClassWithThrowingAttribute;
 use Tests\Unit\Container\Fixtures\ClassWithVariadicParam;
 use Tests\Unit\Container\Fixtures\ConcreteClass;
 use Tests\Unit\Container\Fixtures\LazyClass;
+use Tests\Unit\Container\Fixtures\LazyClassWithNoResolution;
 use Tests\Unit\Container\Fixtures\LiminalClass;
+use Tests\Unit\Container\Fixtures\LiminalInterface;
+use Tests\Unit\Container\Fixtures\NoResolutionInterface;
 use Tests\Unit\Container\Fixtures\TaggedQualifier;
 use Tests\Unit\Container\Fixtures\TestQualifier;
 
@@ -914,6 +920,194 @@ class ContainerTest extends TestCase
         $this->expectException(UnresolvableClassException::class);
 
         $container->resolve(Resolution::for(ClassWithNoResolution::class));
+    }
+
+    /**
+     * - #[NoResolution] on an abstract applies when the abstract is resolved, even though
+     *   the container would construct the binding's concrete class. The message names
+     *   the class that carries the attribute.
+     */
+    #[Test]
+    public function resolveAbstractCarryingNoResolutionThrowsUnresolvableClassException(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(NoResolutionInterface::class, concrete: ConcreteClass::class),
+        );
+
+        $this->expectException(UnresolvableClassException::class);
+        $this->expectExceptionMessage(sprintf(
+            'The class %s is marked with \'%s\', so cannot be resolved automatically.',
+            NoResolutionInterface::class,
+            NoResolution::class,
+        ));
+
+        $container->resolve(Resolution::for(NoResolutionInterface::class));
+    }
+
+    /**
+     * - #[NoResolution] on a binding's concrete class applies when its abstract is resolved.
+     */
+    #[Test]
+    public function resolveAbstractBoundToConcreteCarryingNoResolutionThrowsUnresolvableClassException(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(AbstractInterface::class, concrete: ClassWithNoResolution::class),
+        );
+
+        $this->expectException(UnresolvableClassException::class);
+        $this->expectExceptionMessage(sprintf(
+            'The class %s is marked with \'%s\', so cannot be resolved automatically.',
+            ClassWithNoResolution::class,
+            NoResolution::class,
+        ));
+
+        $container->resolve(Resolution::for(AbstractInterface::class));
+    }
+
+    /**
+     * - A class carrying an attribute the container does not track resolves normally, and
+     *   the attribute is never instantiated, since its constructor throws.
+     */
+    #[Test]
+    public function resolveClassWithUntrackedAttributeDoesNotInstantiateIt(): void
+    {
+        $container = $this->buildContainer();
+
+        $this->assertInstanceOf(
+            ClassWithThrowingAttribute::class,
+            $container->resolve(Resolution::for(ClassWithThrowingAttribute::class)),
+        );
+    }
+
+    /**
+     * - When both the abstract and the binding's concrete class carry #[NoResolution], the
+     *   message names the abstract. The abstract is checked first, so a failure here means
+     *   the order in which the two classes are consulted has changed.
+     */
+    #[Test]
+    public function resolveAbstractAndConcreteBothCarryingNoResolutionNamesTheAbstract(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(NoResolutionInterface::class, concrete: ClassWithNoResolution::class),
+        );
+
+        $this->expectException(UnresolvableClassException::class);
+        $this->expectExceptionMessage(sprintf(
+            'The class %s is marked with \'%s\', so cannot be resolved automatically.',
+            NoResolutionInterface::class,
+            NoResolution::class,
+        ));
+
+        $container->resolve(Resolution::for(NoResolutionInterface::class));
+    }
+
+    /**
+     * - #[NoResolution] is read from the requested class after alias normalisation, so
+     *   resolving an alias of a marked abstract throws and names the abstract.
+     */
+    #[Test]
+    public function resolveAliasOfAbstractCarryingNoResolutionThrowsUnresolvableClassException(): void
+    {
+        $container = $this->buildContainerWithAlias(
+            new Binding(NoResolutionInterface::class, concrete: ConcreteClass::class),
+            [ConcreteClass::class => NoResolutionInterface::class],
+        );
+
+        $this->expectException(UnresolvableClassException::class);
+        $this->expectExceptionMessage(sprintf(
+            'The class %s is marked with \'%s\', so cannot be resolved automatically.',
+            NoResolutionInterface::class,
+            NoResolution::class,
+        ));
+
+        $container->resolve(Resolution::for(ConcreteClass::class));
+    }
+
+    /**
+     * - #[NoResolution] only stops automatic construction, so a marked class bound to a
+     *   factory resolves through the factory.
+     */
+    #[Test]
+    public function resolveClassWithNoResolutionBoundToFactoryResolves(): void
+    {
+        $expected  = new ClassWithNoResolution();
+        $container = $this->buildContainerWith(
+            new Binding(ClassWithNoResolution::class, factory: static fn (): ClassWithNoResolution => $expected),
+        );
+
+        $this->assertSame($expected, $container->resolve(Resolution::for(ClassWithNoResolution::class)));
+    }
+
+    /**
+     * - #[NoResolution] only stops automatic construction, so a marked class bound to an
+     *   instance resolves to that instance.
+     */
+    #[Test]
+    public function resolveClassWithNoResolutionBoundToInstanceResolves(): void
+    {
+        $expected  = new ClassWithNoResolution();
+        $container = $this->buildContainerWith(
+            new Binding(ClassWithNoResolution::class, instance: $expected),
+        );
+
+        $this->assertSame($expected, $container->resolve(Resolution::for(ClassWithNoResolution::class)));
+    }
+
+    /**
+     * - #[Liminal] on an abstract applies when the abstract is resolved, so the instance is
+     *   held weakly and is collected once nothing else references it.
+     */
+    #[Test]
+    public function resolveAbstractCarryingLiminalStoresInstanceWeakly(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(LiminalInterface::class, concrete: ConcreteClass::class, shared: true),
+        );
+
+        $instance = $container->resolve(Resolution::for(LiminalInterface::class));
+        $weak     = \WeakReference::create($instance);
+        unset($instance);
+        gc_collect_cycles();
+
+        $this->assertNull($weak->get());
+    }
+
+    /**
+     * - A class carrying both #[Lazy] and #[NoResolution] throws rather than returning a
+     *   lazy proxy. #[NoResolution] is checked first, so a failure here means the order of
+     *   the class attribute checks has changed.
+     */
+    #[Test]
+    public function resolveClassWithLazyAndNoResolutionThrowsUnresolvableClassException(): void
+    {
+        $container = $this->buildContainer();
+
+        $this->expectException(UnresolvableClassException::class);
+        $this->expectExceptionMessage(sprintf(
+            'The class %s is marked with \'%s\', so cannot be resolved automatically.',
+            LazyClassWithNoResolution::class,
+            NoResolution::class,
+        ));
+
+        $container->resolve(Resolution::for(LazyClassWithNoResolution::class));
+    }
+
+    /**
+     * - A binding for a class that does not exist throws when resolved, even when its
+     *   concrete class exists, because the requested class is reflected for its class
+     *   attributes.
+     */
+    #[Test]
+    public function resolveBindingForNonexistentAbstractThrowsInvalidClassException(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding('Missing\Contract', concrete: ConcreteClass::class),
+        );
+
+        $this->expectException(InvalidClassException::class);
+        $this->expectExceptionMessage('The provided class Missing\Contract is not a valid class.');
+
+        $container->resolve(Resolution::for('Missing\Contract'));
     }
 
     /**

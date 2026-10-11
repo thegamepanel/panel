@@ -133,6 +133,14 @@ final class Container
         return $this->resolveFresh($resolution, $class, $binding, $liminal);
     }
 
+    /**
+     * Invoke a callable, method or constructor, taking its parameters from the
+     * invocation's arguments by name and resolving the rest.
+     *
+     * @param Invocation $invocation
+     *
+     * @return mixed
+     */
     public function invoke(Invocation $invocation): mixed
     {
         // If there's no class, it's a callable.
@@ -235,6 +243,9 @@ final class Container
     }
 
     /**
+     * Check whether a resolution is lazy: it asks to be, its binding marks it,
+     * or the class or its concrete class carries the lazy attribute.
+     *
      * @template TClass of object
      *
      * @param Resolution<TClass>   $resolution
@@ -251,6 +262,9 @@ final class Container
     }
 
     /**
+     * Check whether a resolution is liminal: it asks to be, its binding marks
+     * it, or the class or its concrete class carries the liminal attribute.
+     *
      * @template TClass of object
      *
      * @param Resolution<TClass>   $resolution
@@ -261,17 +275,21 @@ final class Container
      */
     private function isLiminal(Resolution $resolution, ?Binding $binding, string $class): bool
     {
-        // Determine whether the resolution is liminal
         return $resolution->isLiminal()
-                   || ($binding->liminal ?? false)
-                   || $this->hasClassAttribute(Liminal::class, $class, $binding?->concrete);
+               || ($binding->liminal ?? false)
+               || $this->hasClassAttribute(Liminal::class, $class, $binding?->concrete);
     }
 
     /**
+     * Add a resolution's entry to the resolution stack, throwing when the
+     * entry is already on it.
+     *
      * @template TClass of object
      *
      * @param class-string<TClass> $class
      * @param Resolution<TClass>   $resolution
+     *
+     * @throws CircularDependencyException
      */
     private function enterResolutionStack(string $class, Resolution $resolution): void
     {
@@ -295,6 +313,9 @@ final class Container
     }
 
     /**
+     * Throw when the class or the binding's concrete class carries the no
+     * resolution attribute.
+     *
      * @template TClass of object
      *
      * @param class-string<TClass> $class
@@ -455,6 +476,9 @@ final class Container
     }
 
     /**
+     * Call a callable with its parameters collected from the arguments and the
+     * container.
+     *
      * @param callable             $callable
      * @param array<string, mixed> $arguments
      *
@@ -469,6 +493,9 @@ final class Container
     }
 
     /**
+     * Call a public method of a class: statically, as a constructor creating a
+     * new instance, or on the given object, resolving one when none is given.
+     *
      * @template TClass of object
      *
      * @param class-string<TClass> $class

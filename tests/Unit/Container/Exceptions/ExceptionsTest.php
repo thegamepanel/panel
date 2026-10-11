@@ -306,6 +306,22 @@ class ExceptionsTest extends TestCase
         $this->assertSame($previous, $e->getPrevious());
     }
 
+    /**
+     * - A lazy proxy given an instance PHP does not accept names the proxy's class and the
+     *   instance's class.
+     */
+    #[Test]
+    public function dependencyProxyProducesExpectedMessage(): void
+    {
+        $e = DependencyResolutionException::proxy('ParentThing', 'ChildThing');
+
+        $this->assertInstanceOf(DependencyResolutionException::class, $e);
+        $this->assertSame(
+            'Cannot initialise the lazy proxy for "ParentThing" with an instance of "ChildThing".',
+            $e->getMessage(),
+        );
+    }
+
     // -------------------------------------------------------------------------
     // CircularDependencyException
     // -------------------------------------------------------------------------

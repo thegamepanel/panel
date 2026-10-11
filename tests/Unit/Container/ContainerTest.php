@@ -32,6 +32,10 @@ use Tests\Unit\Container\Fixtures\AttributeQualifier;
 use Tests\Unit\Container\Fixtures\ChainDependencyFirst;
 use Tests\Unit\Container\Fixtures\ChainDependencySecond;
 use Tests\Unit\Container\Fixtures\ChainDependencyThird;
+use Tests\Unit\Container\Fixtures\ChildOfParentWithPrivateProperty;
+use Tests\Unit\Container\Fixtures\ClassCountingLifecycle;
+use Tests\Unit\Container\Fixtures\ClassExtendingInternalClass;
+use Tests\Unit\Container\Fixtures\ClassExtendingStdClass;
 use Tests\Unit\Container\Fixtures\ClassLeadingIntoCircularDependency;
 use Tests\Unit\Container\Fixtures\ClassWithAbstractDependency;
 use Tests\Unit\Container\Fixtures\ClassWithDependency;
@@ -45,14 +49,17 @@ use Tests\Unit\Container\Fixtures\ClassWithMultipleDependencies;
 use Tests\Unit\Container\Fixtures\ClassWithNamedAndQualifiedDependency;
 use Tests\Unit\Container\Fixtures\ClassWithNamedDependency;
 use Tests\Unit\Container\Fixtures\ClassWithNoResolution;
+use Tests\Unit\Container\Fixtures\ClassWithPrivateConstructor;
 use Tests\Unit\Container\Fixtures\ClassWithPrivateMethod;
 use Tests\Unit\Container\Fixtures\ClassWithProperty;
+use Tests\Unit\Container\Fixtures\ClassWithPropertySubclass;
 use Tests\Unit\Container\Fixtures\ClassWithRepeatedDependency;
 use Tests\Unit\Container\Fixtures\ClassWithRequiredScalarParam;
 use Tests\Unit\Container\Fixtures\ClassWithScalarDefault;
 use Tests\Unit\Container\Fixtures\ClassWithThrowingAttribute;
 use Tests\Unit\Container\Fixtures\ClassWithVariadicParam;
 use Tests\Unit\Container\Fixtures\ConcreteClass;
+use Tests\Unit\Container\Fixtures\ConcreteClassWithProperty;
 use Tests\Unit\Container\Fixtures\DecoratableInterface;
 use Tests\Unit\Container\Fixtures\DecoratedClass;
 use Tests\Unit\Container\Fixtures\DecoratingClass;
@@ -65,6 +72,7 @@ use Tests\Unit\Container\Fixtures\LazyCircularSecond;
 use Tests\Unit\Container\Fixtures\LazyClass;
 use Tests\Unit\Container\Fixtures\LazyClassDependingOnEager;
 use Tests\Unit\Container\Fixtures\LazyClassWithNoResolution;
+use Tests\Unit\Container\Fixtures\LazyConcreteClass;
 use Tests\Unit\Container\Fixtures\LiminalClass;
 use Tests\Unit\Container\Fixtures\LiminalInterface;
 use Tests\Unit\Container\Fixtures\MutualDependencyFirst;
@@ -103,18 +111,40 @@ class ContainerTest extends TestCase
     }
 
     /**
-     * - A lazy resolution for a class with no typed properties cannot be deferred and
-     *   returns an already-initialized instance instead.
+     * - A lazy resolution of a class with no properties that could trigger initialisation
+     *   is constructed straight away and cached, so a second resolution returns the same
+     *   instance.
      */
     #[Test]
-    public function resolveWithLazilyReturnsInitializedObjectWhenClassHasNoUninitializedProperties(): void
+    public function resolveWithLazilyConstructsAndCachesClassWithNoProperties(): void
     {
         $container = $this->buildContainer();
 
-        $result = $container->resolve(Resolution::for(ClassWithMethods::class)->lazily());
+        $first  = $container->resolve(Resolution::for(ClassWithMethods::class)->lazily());
+        $second = $container->resolve(Resolution::for(ClassWithMethods::class)->lazily());
 
-        $this->assertFalse(new ReflectionClass(ClassWithMethods::class)->isUninitializedLazyObject($result));
-        $this->assertInstanceOf(ClassWithMethods::class, $result);
+        $this->assertFalse(new ReflectionClass(ClassWithMethods::class)->isUninitializedLazyObject($first));
+        $this->assertInstanceOf(ClassWithMethods::class, $first);
+        $this->assertSame($first, $second);
+    }
+
+    /**
+     * - A lazy resolution of a class with no properties runs its constructor, and its
+     *   destructor runs once, when the instance is released.
+     */
+    #[Test]
+    public function resolveWithLazilyRunsConstructorAndDestructorOnceForClassWithNoProperties(): void
+    {
+        ClassCountingLifecycle::$constructed = 0;
+        ClassCountingLifecycle::$destructed  = 0;
+
+        $container = $this->buildContainer();
+        $result    = $container->resolve(Resolution::for(ClassCountingLifecycle::class)->lazily());
+
+        unset($container, $result);
+
+        $this->assertSame(1, ClassCountingLifecycle::$constructed);
+        $this->assertSame(1, ClassCountingLifecycle::$destructed);
     }
 
     /**
@@ -176,6 +206,370 @@ class ContainerTest extends TestCase
 
         $this->assertFalse(new ReflectionClass(LazyClass::class)->isUninitializedLazyObject($result));
         $this->assertInstanceOf(LazyClass::class, $result);
+    }
+
+    /**
+     * - A binding marked lazy returns an uninitialised proxy, which initialises when a
+     *   property is accessed.
+     */
+    #[Test]
+    public function resolveBindingMarkedLazyReturnsProxyThatInitialisesOnAccess(): void
+    {
+        $container = $this->buildContainerWith(new Binding(ClassWithProperty::class, lazily: true));
+        $reflector = new ReflectionClass(ClassWithProperty::class);
+
+        $proxy = $container->resolve(Resolution::for(ClassWithProperty::class));
+
+        $this->assertTrue($reflector->isUninitializedLazyObject($proxy));
+        $this->assertSame('initialized', $proxy->value);
+        $this->assertFalse($reflector->isUninitializedLazyObject($proxy));
+    }
+
+    /**
+     * - A named binding marked lazy returns a proxy, because the flag is read from the
+     *   binding the name selects.
+     */
+    #[Test]
+    public function resolveNamedBindingMarkedLazyReturnsProxy(): void
+    {
+        $namedBinding = new Binding(ClassWithProperty::class, lazily: true);
+        $container    = $this->buildContainerWith(
+            new Binding(ClassWithProperty::class, namedMap: ['primary' => $namedBinding]),
+        );
+
+        $proxy = $container->resolve(Resolution::for(ClassWithProperty::class)->named('primary'));
+
+        $this->assertTrue(new ReflectionClass(ClassWithProperty::class)->isUninitializedLazyObject($proxy));
+    }
+
+    /**
+     * - #[Lazy] on the concrete class of a binding applies when the abstract is resolved,
+     *   and the proxy is made for the concrete class.
+     */
+    #[Test]
+    public function resolveAbstractBoundToLazyConcreteReturnsProxyOfConcrete(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(AbstractInterface::class, concrete: LazyConcreteClass::class),
+        );
+
+        $proxy = $container->resolve(Resolution::for(AbstractInterface::class));
+
+        $this->assertInstanceOf(LazyConcreteClass::class, $proxy);
+        $this->assertTrue(new ReflectionClass(LazyConcreteClass::class)->isUninitializedLazyObject($proxy));
+        $this->assertSame('initialized', $proxy->value);
+    }
+
+    /**
+     * - #[Lazy] on the requested class applies to an instance binding, and the proxy
+     *   initialises to the bound instance's state.
+     */
+    #[Test]
+    public function resolveLazyClassInstanceBindingReturnsProxyOfInstance(): void
+    {
+        $instance        = new LazyClass();
+        $instance->value = 'bound';
+        $container       = $this->buildContainerWith(new Binding(LazyClass::class, instance: $instance));
+
+        $proxy = $container->resolve(Resolution::for(LazyClass::class));
+
+        $this->assertTrue(new ReflectionClass(LazyClass::class)->isUninitializedLazyObject($proxy));
+        $this->assertSame('bound', $proxy->value);
+    }
+
+    /**
+     * - #[Lazy] on the requested class applies to a factory binding, and the factory is
+     *   not called until the proxy is first used.
+     */
+    #[Test]
+    public function resolveLazyClassFactoryBindingDefersFactoryUntilFirstUse(): void
+    {
+        $calls     = 0;
+        $container = $this->buildContainerWith(
+            new Binding(
+                LazyClass::class,
+                factory: static function () use (&$calls): LazyClass {
+                    ++$calls;
+
+                    return new LazyClass();
+                },
+            ),
+        );
+
+        $proxy = $container->resolve(Resolution::for(LazyClass::class));
+
+        $this->assertSame(0, $calls);
+        $this->assertSame('initialized', $proxy->value);
+        $this->assertSame(1, $calls);
+    }
+
+    /**
+     * - A lazy resolution of an abstract bound to a concrete class gets a proxy of the
+     *   concrete class, not of the abstract.
+     */
+    #[Test]
+    public function resolveLazilyAbstractBoundToConcreteReturnsProxyOfConcrete(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(AbstractInterface::class, concrete: ConcreteClassWithProperty::class),
+        );
+
+        $proxy = $container->resolve(Resolution::for(AbstractInterface::class)->lazily());
+
+        $this->assertInstanceOf(ConcreteClassWithProperty::class, $proxy);
+        $this->assertTrue(new ReflectionClass(ConcreteClassWithProperty::class)->isUninitializedLazyObject($proxy));
+    }
+
+    /**
+     * - A class whose only property is a private one on its parent still gets a proxy,
+     *   because PHP defers that property even though the class does not list it.
+     */
+    #[Test]
+    public function resolveLazilyClassWithInheritedPrivatePropertyReturnsProxy(): void
+    {
+        $container = $this->buildContainer();
+        $reflector = new ReflectionClass(ChildOfParentWithPrivateProperty::class);
+
+        $proxy = $container->resolve(Resolution::for(ChildOfParentWithPrivateProperty::class)->lazily());
+
+        $this->assertTrue($reflector->isUninitializedLazyObject($proxy));
+        $this->assertSame('initialized', $proxy->value());
+        $this->assertFalse($reflector->isUninitializedLazyObject($proxy));
+    }
+
+    /**
+     * - A lazy factory binding of a class with a private constructor gets a proxy, which
+     *   ReflectionClass::isInstantiable() would wrongly reject.
+     */
+    #[Test]
+    public function resolveLazilyFactoryBindingOfClassWithPrivateConstructorReturnsProxy(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(ClassWithPrivateConstructor::class, factory: ClassWithPrivateConstructor::make(...)),
+        );
+        $reflector = new ReflectionClass(ClassWithPrivateConstructor::class);
+
+        $proxy = $container->resolve(Resolution::for(ClassWithPrivateConstructor::class)->lazily());
+
+        $this->assertTrue($reflector->isUninitializedLazyObject($proxy));
+        $this->assertSame('initialized', $proxy->value);
+    }
+
+    /**
+     * - A lazy resolution of a class extending stdClass gets a proxy, because stdClass is
+     *   the one internal class PHP allows.
+     */
+    #[Test]
+    public function resolveLazilyClassExtendingStdClassReturnsProxy(): void
+    {
+        $container = $this->buildContainer();
+
+        $proxy = $container->resolve(Resolution::for(ClassExtendingStdClass::class)->lazily());
+
+        $this->assertTrue(new ReflectionClass(ClassExtendingStdClass::class)->isUninitializedLazyObject($proxy));
+    }
+
+    /**
+     * - A lazy factory binding of an interface throws when requested, without calling the
+     *   factory. The instantiability check comes before the check for properties, so a
+     *   failure here means the order changed and the factory ran eagerly.
+     */
+    #[Test]
+    public function resolveLazilyFactoryBindingOfInterfaceThrowsWithoutCallingFactory(): void
+    {
+        $calls     = 0;
+        $container = $this->buildContainerWith(
+            new Binding(
+                AbstractInterface::class,
+                factory: static function () use (&$calls): ConcreteClass {
+                    ++$calls;
+
+                    return new ConcreteClass();
+                },
+            ),
+        );
+
+        try {
+            $container->resolve(Resolution::for(AbstractInterface::class)->lazily());
+            $this->fail('Expected a NotInstantiableException');
+        } catch (NotInstantiableException $e) {
+            $this->assertSame(sprintf('Class %s is not instantiable', AbstractInterface::class), $e->getMessage());
+        }
+
+        $this->assertSame(0, $calls);
+    }
+
+    /**
+     * - A lazy resolution of a class extending an internal PHP class throws when
+     *   requested, rather than PHP's own error from making the proxy.
+     */
+    #[Test]
+    public function resolveLazilyClassExtendingInternalClassThrowsNotInstantiableException(): void
+    {
+        $container = $this->buildContainer();
+
+        $this->expectException(NotInstantiableException::class);
+        $this->expectExceptionMessage(sprintf('Class %s is not instantiable', ClassExtendingInternalClass::class));
+
+        $container->resolve(Resolution::for(ClassExtendingInternalClass::class)->lazily());
+    }
+
+    /**
+     * - A lazy resolution of a class carrying #[NoResolution] throws when requested, not
+     *   when its proxy is first used.
+     */
+    #[Test]
+    public function resolveLazilyClassWithNoResolutionThrowsWhenRequested(): void
+    {
+        $container = $this->buildContainer();
+
+        $this->expectException(UnresolvableClassException::class);
+        $this->expectExceptionMessage(sprintf(
+            'The class %s is marked with \'%s\', so cannot be resolved automatically.',
+            ClassWithNoResolution::class,
+            NoResolution::class,
+        ));
+
+        $container->resolve(Resolution::for(ClassWithNoResolution::class)->lazily());
+    }
+
+    /**
+     * - A lazy resolution of an interface carrying #[NoResolution] throws
+     *   UnresolvableClassException, not NotInstantiableException. #[NoResolution] is
+     *   checked first, so a failure here means the order of the lazy step's checks changed.
+     */
+    #[Test]
+    public function resolveLazilyInterfaceWithNoResolutionThrowsUnresolvableClassException(): void
+    {
+        $container = $this->buildContainer();
+
+        $this->expectException(UnresolvableClassException::class);
+        $this->expectExceptionMessage(sprintf(
+            'The class %s is marked with \'%s\', so cannot be resolved automatically.',
+            NoResolutionInterface::class,
+            NoResolution::class,
+        ));
+
+        $container->resolve(Resolution::for(NoResolutionInterface::class)->lazily());
+    }
+
+    /**
+     * - A lazy resolution of an abstract bound to a concrete class carrying #[NoResolution]
+     *   throws naming the concrete class.
+     */
+    #[Test]
+    public function resolveLazilyAbstractBoundToConcreteWithNoResolutionNamesConcrete(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(AbstractInterface::class, concrete: ClassWithNoResolution::class),
+        );
+
+        $this->expectException(UnresolvableClassException::class);
+        $this->expectExceptionMessage(sprintf(
+            'The class %s is marked with \'%s\', so cannot be resolved automatically.',
+            ClassWithNoResolution::class,
+            NoResolution::class,
+        ));
+
+        $container->resolve(Resolution::for(AbstractInterface::class)->lazily());
+    }
+
+    /**
+     * - A lazy factory binding of a class carrying #[NoResolution] resolves, because the
+     *   attribute only stops the container constructing the class itself.
+     */
+    #[Test]
+    public function resolveLazilyFactoryBindingOfClassWithNoResolutionReturnsFactoryInstance(): void
+    {
+        $instance  = new ClassWithNoResolution();
+        $container = $this->buildContainerWith(
+            new Binding(ClassWithNoResolution::class, factory: static fn () => $instance),
+        );
+
+        $result = $container->resolve(Resolution::for(ClassWithNoResolution::class)->lazily());
+
+        $this->assertSame($instance, $result);
+    }
+
+    /**
+     * - A lazy instance binding of a class carrying #[NoResolution] resolves, because the
+     *   attribute only stops the container constructing the class itself.
+     */
+    #[Test]
+    public function resolveLazilyInstanceBindingOfClassWithNoResolutionReturnsInstance(): void
+    {
+        $instance  = new ClassWithNoResolution();
+        $container = $this->buildContainerWith(new Binding(ClassWithNoResolution::class, instance: $instance));
+
+        $result = $container->resolve(Resolution::for(ClassWithNoResolution::class)->lazily());
+
+        $this->assertSame($instance, $result);
+    }
+
+    /**
+     * - A lazy factory binding that returns its own class initialises without throwing,
+     *   so the proxy's check accepts an instance of exactly the proxy's class.
+     */
+    #[Test]
+    public function resolveLazilyFactoryBindingReturningItsOwnClassInitialises(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(ClassWithProperty::class, factory: static fn () => new ClassWithProperty()),
+        );
+
+        $proxy = $container->resolve(Resolution::for(ClassWithProperty::class)->lazily());
+
+        $this->assertSame('initialized', $proxy->value);
+    }
+
+    /**
+     * - A lazy factory binding that returns an instance of a subclass gets a proxy, which
+     *   throws when first used, because PHP does not accept a subclass behind a proxy.
+     */
+    #[Test]
+    public function resolveLazilyFactoryBindingReturningSubclassThrowsOnFirstUse(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(ClassWithProperty::class, factory: static fn () => new ClassWithPropertySubclass()),
+        );
+
+        $proxy = $container->resolve(Resolution::for(ClassWithProperty::class)->lazily());
+
+        $this->assertTrue(new ReflectionClass(ClassWithProperty::class)->isUninitializedLazyObject($proxy));
+
+        $this->expectException(DependencyResolutionException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Cannot initialise the lazy proxy for "%s" with an instance of "%s".',
+            ClassWithProperty::class,
+            ClassWithPropertySubclass::class,
+        ));
+
+        $proxy->value;
+    }
+
+    /**
+     * - After a proxy fails because its factory returned a subclass, a second lazy request
+     *   returns the real instance, which was cached before the check threw.
+     */
+    #[Test]
+    public function resolveLazilyAfterFailedProxyReturnsCachedInstance(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(ClassWithProperty::class, factory: static fn () => new ClassWithPropertySubclass()),
+        );
+
+        $proxy = $container->resolve(Resolution::for(ClassWithProperty::class)->lazily());
+
+        try {
+            $proxy->value;
+            $this->fail('Expected a DependencyResolutionException');
+        } catch (DependencyResolutionException) {
+        }
+
+        $result = $container->resolve(Resolution::for(ClassWithProperty::class)->lazily());
+
+        $this->assertInstanceOf(ClassWithPropertySubclass::class, $result);
+        $this->assertFalse(new ReflectionClass(ClassWithPropertySubclass::class)->isUninitializedLazyObject($result));
     }
 
     // -------------------------------------------------------------------------
@@ -1291,8 +1685,8 @@ class ContainerTest extends TestCase
 
     /**
      * - A class carrying both #[Lazy] and #[NoResolution] throws rather than returning a
-     *   lazy proxy. #[NoResolution] is checked first, so a failure here means the order of
-     *   the class attribute checks has changed.
+     *   lazy proxy. The lazy step checks #[NoResolution] before making a proxy, so a
+     *   failure here means the order of the lazy step's checks has changed.
      */
     #[Test]
     public function resolveClassWithLazyAndNoResolutionThrowsUnresolvableClassException(): void
@@ -1363,21 +1757,21 @@ class ContainerTest extends TestCase
     }
 
     /**
-     * - A liminal resolution of a factory binding for a class that does not exist
-     *   resolves, because the resolution's own flag is checked before the class is
-     *   reflected for `#[Liminal]`. A failure here means the order of the liminality
-     *   checks has changed.
+     * - A liminal resolution of a factory binding for a class that does not exist throws,
+     *   even though its own flag means the class is not reflected for `#[Liminal]`,
+     *   because the class is still reflected for `#[Lazy]`.
      */
     #[Test]
-    public function resolveLiminalResolutionOfFactoryBindingForNonexistentAbstractSkipsClassAttributes(): void
+    public function resolveLiminalResolutionOfFactoryBindingForNonexistentAbstractThrowsInvalidClassException(): void
     {
         $container = $this->buildContainerWith(
             new Binding('Missing\Contract', factory: fn () => new ClassWithMethods()),
         );
 
-        $instance = $container->resolve(Resolution::for('Missing\Contract')->liminal());
+        $this->expectException(InvalidClassException::class);
+        $this->expectExceptionMessage('The provided class Missing\Contract is not a valid class.');
 
-        $this->assertInstanceOf(ClassWithMethods::class, $instance);
+        $container->resolve(Resolution::for('Missing\Contract')->liminal());
     }
 
     /**
@@ -1818,6 +2212,34 @@ class ContainerTest extends TestCase
 
         $this->assertInstanceOf(ClassWithProperty::class, $proxy);
         $this->assertTrue(new ReflectionClass(ClassWithProperty::class)->isUninitializedLazyObject($proxy));
+    }
+
+    /**
+     * - A lazy request for a class with no properties that is already on the stack is a
+     *   circular dependency, because such a class is given no proxy and is constructed.
+     */
+    #[Test]
+    public function resolveLazilyClassWithNoPropertiesWhileOnTheStackThrowsCircularDependencyException(): void
+    {
+        $container = null;
+        $container = $this->buildContainerWith(
+            new Binding(
+                ClassWithMethods::class,
+                factory: static function () use (&$container): ClassWithMethods {
+                    $container->resolve(Resolution::for(ClassWithMethods::class)->lazily());
+
+                    return new ClassWithMethods();
+                },
+            ),
+        );
+
+        $this->expectException(CircularDependencyException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Circular dependency detected: "%1$s" -> "%1$s".',
+            ClassWithMethods::class,
+        ));
+
+        $container->resolve(Resolution::for(ClassWithMethods::class));
     }
 
     /**

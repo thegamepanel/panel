@@ -9,6 +9,12 @@ use Throwable;
 
 final class NotInstantiableException extends InvalidArgumentException implements ContainerException
 {
+    /**
+     * @param class-string   $class
+     * @param Throwable|null $previous
+     *
+     * @return self
+     */
     public static function make(string $class, ?Throwable $previous = null): self
     {
         return new self(

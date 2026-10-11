@@ -120,10 +120,41 @@ final class Container
             return $instance;
         }
 
-        // If it should be resolved lazily, return a lazy proxy, deferring the
-        // resolution until needed.
-        if ($skipLazy === false && $resolution->shouldResolveLazily()) {
-            return $this->lazy($resolution);
+        if (
+            // If we aren't skipping...
+            $skipLazy === false
+            // And the resolution, binding, or attribute say it's lazy...
+            && (
+                $resolution->shouldResolveLazily()
+                || ($binding->lazily ?? false)
+                || $this->hasClassAttribute(Lazy::class, $class, $binding?->concrete)
+            )
+        ) {
+            $lazyClass = $binding->concrete ?? $class;
+
+            // If the lazy class is marked as no resolution, we can't resolve
+            // it, so we throw an exception.
+            if (
+                $binding?->instance   === null
+                && $binding?->factory === null
+                && $this->hasClassAttribute(NoResolution::class, $class, $binding?->concrete)
+            ) {
+                throw UnresolvableClassException::make(
+                    $this->hasClassAttribute(NoResolution::class, $class) ? $class : $lazyClass,
+                );
+            }
+
+            // If the lazy class can't be lazily instantiated, we throw an
+            // exception.
+            if (ReflectionHelper::canBeLazilyInstantiated($lazyClass) === false) {
+                throw NotInstantiableException::make($lazyClass);
+            }
+
+            // Finally, if it has properties that can be lazily resolved, we
+            // return a lazy proxy, otherwise we just resolve it normally.
+            if (ReflectionHelper::hasLazyProperties($lazyClass)) {
+                return $this->lazy($resolution, $lazyClass);
+            }
         }
 
         // Build the resolution entry.
@@ -170,11 +201,6 @@ final class Container
                     throw UnresolvableClassException::make(
                         $this->hasClassAttribute(NoResolution::class, $class) ? $class : $resolvingClass,
                     );
-                }
-
-                // If it has the lazy attribute, it needs a lazy resolution.
-                if ($skipLazy === false && $this->hasClassAttribute(Lazy::class, $class, $binding?->concrete)) {
-                    return $this->lazy($resolution);
                 }
 
                 // We first need to make sure the class is instantiable.
@@ -278,15 +304,24 @@ final class Container
      *
      * @template TClass of object
      *
-     * @param Resolution<TClass> $resolution
+     * @param Resolution<TClass>   $resolution
+     * @param class-string<TClass> $class
      *
      * @return TClass
      */
-    private function lazy(Resolution $resolution): object
+    private function lazy(Resolution $resolution, string $class): object
     {
         return ReflectionHelper::getLazyProxy(
-            $resolution->class,
-            fn () => $this->resolve($resolution, true),
+            $class,
+            function () use ($resolution, $class): object {
+                $instance = $this->resolve($resolution, true);
+
+                if ($instance::class !== $class) {
+                    throw DependencyResolutionException::proxy($class, $instance::class);
+                }
+
+                return $instance;
+            },
         );
     }
 

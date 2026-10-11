@@ -3,12 +3,14 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Container;
 
+use ArrayObject;
 use Engine\Container\Attributes\Lazy;
 use Engine\Container\Contracts\Resolvable;
 use Engine\Container\Dependency;
 use Engine\Container\Exceptions\InvalidClassException;
 use Engine\Container\Exceptions\InvalidMethodException;
 use Engine\Container\ReflectionHelper;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -19,11 +21,22 @@ use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionUnionType;
 use RuntimeException;
+use stdClass;
+use Tests\Unit\Container\Fixtures\AbstractClassWithProperty;
+use Tests\Unit\Container\Fixtures\AbstractInterface;
+use Tests\Unit\Container\Fixtures\ChildOfParentWithPrivateProperty;
+use Tests\Unit\Container\Fixtures\ClassExtendingInternalClass;
+use Tests\Unit\Container\Fixtures\ClassExtendingStdClass;
 use Tests\Unit\Container\Fixtures\ClassWithMethods;
+use Tests\Unit\Container\Fixtures\ClassWithPrivateConstructor;
 use Tests\Unit\Container\Fixtures\ClassWithProperty;
+use Tests\Unit\Container\Fixtures\ClassWithStaticProperty;
 use Tests\Unit\Container\Fixtures\ClassWithTypedParameters;
+use Tests\Unit\Container\Fixtures\ClassWithVirtualProperty;
+use Tests\Unit\Container\Fixtures\ExampleEnum;
 use Tests\Unit\Container\Fixtures\InvokableClass;
 use Tests\Unit\Container\Fixtures\LazyClass;
+use Tests\Unit\Container\Fixtures\TraitWithProperty;
 
 #[Group('unit'), Group('container'), Group('reflection-helper')]
 class ReflectionHelperTest extends TestCase
@@ -318,6 +331,121 @@ class ReflectionHelperTest extends TestCase
 
         $reflector = new ReflectionClass($proxy);
         $this->assertTrue($reflector->isUninitializedLazyObject($proxy));
+    }
+
+    // -------------------------------------------------------------------------
+    // canBeLazilyInstantiated
+    // -------------------------------------------------------------------------
+
+    /**
+     * - A class PHP cannot make a lazy proxy for reads as not lazily instantiable.
+     *
+     * @param class-string $class
+     */
+    #[Test, DataProvider('notLazilyInstantiableDataProvider')]
+    public function canBeLazilyInstantiatedReturnsFalseForClassesPhpCannotProxy(string $class): void
+    {
+        $this->assertFalse(ReflectionHelper::canBeLazilyInstantiated($class));
+    }
+
+    /**
+     * Each kind of class PHP cannot make a lazy proxy for. The interface has no methods,
+     * so it is not also abstract.
+     *
+     * @return array<string, array{class-string}>
+     */
+    public static function notLazilyInstantiableDataProvider(): array
+    {
+        return [
+            'abstract class'         => [AbstractClassWithProperty::class],
+            'interface'              => [AbstractInterface::class],
+            'trait'                  => [TraitWithProperty::class],
+            'enum'                   => [ExampleEnum::class],
+            'internal class'         => [ArrayObject::class],
+            'extends internal class' => [ClassExtendingInternalClass::class],
+        ];
+    }
+
+    /**
+     * - A class PHP can make a lazy proxy for reads as lazily instantiable, including one
+     *   with a private constructor and stdClass, the one internal class PHP allows.
+     *
+     * @param class-string $class
+     */
+    #[Test, DataProvider('lazilyInstantiableDataProvider')]
+    public function canBeLazilyInstantiatedReturnsTrueForClassesPhpCanProxy(string $class): void
+    {
+        $this->assertTrue(ReflectionHelper::canBeLazilyInstantiated($class));
+    }
+
+    /**
+     * Each kind of class PHP can make a lazy proxy for.
+     *
+     * @return array<string, array{class-string}>
+     */
+    public static function lazilyInstantiableDataProvider(): array
+    {
+        return [
+            'class'               => [ClassWithProperty::class],
+            'private constructor' => [ClassWithPrivateConstructor::class],
+            'stdClass'            => [stdClass::class],
+            'extends stdClass'    => [ClassExtendingStdClass::class],
+        ];
+    }
+
+    // -------------------------------------------------------------------------
+    // hasLazyProperties
+    // -------------------------------------------------------------------------
+
+    /**
+     * - A class with a property PHP would defer in a lazy proxy, its own or a private one
+     *   on its parent, reads as having lazy properties.
+     *
+     * @param class-string $class
+     */
+    #[Test, DataProvider('lazyPropertiesDataProvider')]
+    public function hasLazyPropertiesReturnsTrueForClassesWithDeferrableProperties(string $class): void
+    {
+        $this->assertTrue(ReflectionHelper::hasLazyProperties($class));
+    }
+
+    /**
+     * Classes with a property PHP defers in a lazy proxy.
+     *
+     * @return array<string, array{class-string}>
+     */
+    public static function lazyPropertiesDataProvider(): array
+    {
+        return [
+            'own property'               => [ClassWithProperty::class],
+            'parent\'s private property' => [ChildOfParentWithPrivateProperty::class],
+        ];
+    }
+
+    /**
+     * - A class with no properties, or only static or virtual ones, reads as having no
+     *   lazy properties.
+     *
+     * @param class-string $class
+     */
+    #[Test, DataProvider('noLazyPropertiesDataProvider')]
+    public function hasLazyPropertiesReturnsFalseForClassesWithNothingToDefer(string $class): void
+    {
+        $this->assertFalse(ReflectionHelper::hasLazyProperties($class));
+    }
+
+    /**
+     * Classes with nothing PHP defers in a lazy proxy.
+     *
+     * @return array<string, array{class-string}>
+     */
+    public static function noLazyPropertiesDataProvider(): array
+    {
+        return [
+            'no properties'         => [ClassWithMethods::class],
+            'static property only'  => [ClassWithStaticProperty::class],
+            'virtual property only' => [ClassWithVirtualProperty::class],
+        ];
     }
 
     // -------------------------------------------------------------------------

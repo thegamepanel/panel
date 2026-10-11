@@ -67,4 +67,19 @@ final class DependencyResolutionException extends RuntimeException implements Co
             previous: $previous,
         );
     }
+
+    /**
+     * @param class-string $class
+     * @param class-string $instance
+     *
+     * @return self
+     */
+    public static function proxy(string $class, string $instance): self
+    {
+        return new self(sprintf(
+            'Cannot initialise the lazy proxy for "%s" with an instance of "%s".',
+            $class,
+            $instance,
+        ));
+    }
 }

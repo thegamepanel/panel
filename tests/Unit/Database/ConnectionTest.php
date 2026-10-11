@@ -8,9 +8,12 @@ use Engine\Database\Exceptions\DatabaseException;
 use Engine\Database\Exceptions\QueryException;
 use Engine\Database\Query\Row;
 use PDO;
+use PDOException;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
+use RuntimeException;
 
 #[Group('unit'), Group('database'), Group('connection')]
 class ConnectionTest extends TestCase
@@ -132,9 +135,9 @@ class ConnectionTest extends TestCase
         try {
             $conn->transaction(function (Connection $c) {
                 $c->execute('INSERT INTO test (name) VALUES (?)', ['Alice']);
-                throw new \RuntimeException('fail');
+                throw new RuntimeException('fail');
             });
-        } catch (\RuntimeException) {
+        } catch (RuntimeException) {
         }
         $this->assertCount(0, $conn->query('SELECT * FROM test')->all());
     }
@@ -216,7 +219,7 @@ class ConnectionTest extends TestCase
             $this->assertSame('INSERT INTO nonexistent_table (col) VALUES (?)', $e->getSql());
             $this->assertSame(['val'], $e->getBindings());
             $this->assertNotEmpty($e->getMessage());
-            $this->assertInstanceOf(\PDOException::class, $e->getPrevious());
+            $this->assertInstanceOf(PDOException::class, $e->getPrevious());
             $this->assertSame($e->getPrevious()->getMessage(), $e->getMessage());
         }
     }
@@ -256,7 +259,7 @@ class ConnectionTest extends TestCase
     public function processBindingsConvertsBoolsToInts(): void
     {
         $conn   = $this->connection();
-        $method = new \ReflectionMethod($conn, 'processBindings');
+        $method = new ReflectionMethod($conn, 'processBindings');
 
         $this->assertSame(
             [1, 0, 'hello', 42, null],

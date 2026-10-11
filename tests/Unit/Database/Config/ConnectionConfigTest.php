@@ -5,6 +5,7 @@ namespace Tests\Unit\Database\Config;
 
 use Engine\Database\Config\ConnectionConfig;
 use InvalidArgumentException;
+use PDO;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -22,7 +23,7 @@ class ConnectionConfigTest extends TestCase
     #[Test]
     public function fromArrayBuildsConfigFromHostPortShape(): void
     {
-        $options = [\PDO::ATTR_TIMEOUT => 5];
+        $options = [PDO::ATTR_TIMEOUT => 5];
 
         $config = ConnectionConfig::fromArray([
             'host'     => '127.0.0.1',
@@ -49,7 +50,7 @@ class ConnectionConfigTest extends TestCase
     #[Test]
     public function fromArrayBuildsConfigFromSocketShape(): void
     {
-        $options = [\PDO::ATTR_TIMEOUT => 5];
+        $options = [PDO::ATTR_TIMEOUT => 5];
 
         $config = ConnectionConfig::fromArray([
             'socket'   => '/var/run/mysql.sock',

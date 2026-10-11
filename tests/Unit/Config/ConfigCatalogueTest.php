@@ -7,6 +7,7 @@ use Engine\Config\ConfigCatalogue;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 use Tests\Unit\Config\Fixtures\AnotherTestConfigObject;
 use Tests\Unit\Config\Fixtures\TestConfigObject;
 
@@ -118,7 +119,7 @@ class ConfigCatalogueTest extends TestCase
     #[Test]
     public function forReturnsNullForUnknownClass(): void
     {
-        $this->assertNull($this->catalogue->for(\stdClass::class));
+        $this->assertNull($this->catalogue->for(stdClass::class));
     }
 
     /**

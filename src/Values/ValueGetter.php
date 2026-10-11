@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Engine\Values;
 
 use Engine\Values\Exceptions\InvalidValueCastException;
+use JsonException;
 
 class ValueGetter
 {
@@ -49,7 +50,7 @@ class ValueGetter
      * @return array<mixed>
      *
      * @throws InvalidValueCastException
-     * @throws \JsonException
+     * @throws JsonException
      */
     public static function array(string $name, array $values): array
     {

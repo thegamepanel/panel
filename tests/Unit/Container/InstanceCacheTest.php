@@ -14,6 +14,7 @@ use Tests\Unit\Container\Fixtures\AnotherTestQualifier;
 use Tests\Unit\Container\Fixtures\ClassWithMethods;
 use Tests\Unit\Container\Fixtures\ClassWithProperty;
 use Tests\Unit\Container\Fixtures\TestQualifier;
+use WeakReference;
 
 #[Group('unit'), Group('container'), Group('instance-cache')]
 class InstanceCacheTest extends TestCase
@@ -211,7 +212,7 @@ class InstanceCacheTest extends TestCase
     {
         $cache    = InstanceCache::strong();
         $instance = new ClassWithMethods();
-        $weak     = \WeakReference::create($instance);
+        $weak     = WeakReference::create($instance);
 
         $cache->put(ClassWithMethods::class, $instance, ...$dimension);
         unset($instance);

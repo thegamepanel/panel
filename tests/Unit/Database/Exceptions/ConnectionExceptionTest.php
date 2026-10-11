@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Database\Exceptions;
 
 use Engine\Database\Exceptions\ConnectionException;
+use Exception;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -37,7 +38,7 @@ class ConnectionExceptionTest extends TestCase
     #[Test]
     public function cannotConnectUsesPreviousExceptionMessage(): void
     {
-        $previous  = new \Exception('connection refused');
+        $previous  = new Exception('connection refused');
         $exception = ConnectionException::cannotConnect('myconn', $previous);
 
         $this->assertSame('connection refused', $exception->getMessage());

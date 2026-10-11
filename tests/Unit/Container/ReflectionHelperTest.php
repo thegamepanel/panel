@@ -14,7 +14,11 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use ReflectionFunction;
+use ReflectionIntersectionType;
 use ReflectionMethod;
+use ReflectionNamedType;
+use ReflectionUnionType;
+use RuntimeException;
 use Tests\Unit\Container\Fixtures\ClassWithMethods;
 use Tests\Unit\Container\Fixtures\ClassWithProperty;
 use Tests\Unit\Container\Fixtures\ClassWithTypedParameters;
@@ -467,18 +471,18 @@ class ReflectionHelperTest extends TestCase
         $constructor = new ReflectionClass($class)->getConstructor();
 
         if ($constructor === null) {
-            throw new \RuntimeException("{$class} has no constructor");
+            throw new RuntimeException("{$class} has no constructor");
         }
 
         foreach ($constructor->getParameters() as $param) {
             if ($param->getName() === $parameter) {
-                /** @var \ReflectionNamedType|\ReflectionUnionType|\ReflectionIntersectionType|null $type */
+                /** @var ReflectionNamedType|ReflectionUnionType|ReflectionIntersectionType|null $type */
                 $type = $param->getType();
 
                 return new Dependency($param->getName(), $type);
             }
         }
 
-        throw new \RuntimeException("Parameter '{$parameter}' not found on {$class}");
+        throw new RuntimeException("Parameter '{$parameter}' not found on {$class}");
     }
 }

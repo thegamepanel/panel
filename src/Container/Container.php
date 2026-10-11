@@ -21,7 +21,10 @@ use Engine\Container\Exceptions\UnresolvableClassException;
 use Engine\Container\Resolvers\ResolverCatalogue;
 use ReflectionException;
 use ReflectionFunctionAbstract;
+use ReflectionIntersectionType;
+use ReflectionNamedType;
 use ReflectionParameter;
+use ReflectionUnionType;
 use Throwable;
 
 final class Container
@@ -449,7 +452,7 @@ final class Container
          * This has to be here, otherwise PHPStan will have wobbler. In reality,
          * it is always one of these types.
          *
-         * @var \ReflectionNamedType|\ReflectionUnionType|\ReflectionIntersectionType|null $type
+         * @var ReflectionNamedType|ReflectionUnionType|ReflectionIntersectionType|null $type
          */
         $type = $parameter->getType();
 

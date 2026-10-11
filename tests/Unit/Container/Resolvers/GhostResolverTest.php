@@ -15,6 +15,10 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use ReflectionIntersectionType;
+use ReflectionNamedType;
+use ReflectionUnionType;
+use RuntimeException;
 use Tests\Unit\Container\Fixtures\AbstractInterface;
 use Tests\Unit\Container\Fixtures\ClassWithGhostAbstractDependency;
 use Tests\Unit\Container\Fixtures\ClassWithGhostDependency;
@@ -163,18 +167,18 @@ class GhostResolverTest extends TestCase
         $constructor = new ReflectionClass($class)->getConstructor();
 
         if ($constructor === null) {
-            throw new \RuntimeException("{$class} has no constructor");
+            throw new RuntimeException("{$class} has no constructor");
         }
 
         foreach ($constructor->getParameters() as $param) {
             if ($param->getName() === $paramName) {
-                /** @var \ReflectionNamedType|\ReflectionUnionType|\ReflectionIntersectionType|null $type */
+                /** @var ReflectionNamedType|ReflectionUnionType|ReflectionIntersectionType|null $type */
                 $type = $param->getType();
 
                 return new Dependency($param->getName(), $type);
             }
         }
 
-        throw new \RuntimeException("Parameter '{$paramName}' not found on {$class}");
+        throw new RuntimeException("Parameter '{$paramName}' not found on {$class}");
     }
 }

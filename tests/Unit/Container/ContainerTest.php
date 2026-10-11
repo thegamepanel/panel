@@ -80,6 +80,7 @@ use Tests\Unit\Container\Fixtures\TaggedQualifier;
 use Tests\Unit\Container\Fixtures\TestQualifier;
 use Tests\Unit\Container\Fixtures\UnionCircularFirst;
 use Tests\Unit\Container\Fixtures\UnionCircularSecond;
+use WeakReference;
 
 #[Group('unit'), Group('container')]
 class ContainerTest extends TestCase
@@ -305,7 +306,7 @@ class ContainerTest extends TestCase
 
         $this->assertSame($first, $second);
 
-        $weak = \WeakReference::create($first);
+        $weak = WeakReference::create($first);
         unset($first, $second);
         gc_collect_cycles();
 
@@ -326,7 +327,7 @@ class ContainerTest extends TestCase
         $resolution = Resolution::for(ClassWithProperty::class)->liminal();
 
         $instance = $container->resolve($resolution);
-        $weak     = \WeakReference::create($instance);
+        $weak     = WeakReference::create($instance);
         unset($instance);
         gc_collect_cycles();
 
@@ -375,7 +376,7 @@ class ContainerTest extends TestCase
 
         $this->assertSame($first, $second);
 
-        $weak = \WeakReference::create($first);
+        $weak = WeakReference::create($first);
         unset($first, $second);
         gc_collect_cycles();
 
@@ -399,7 +400,7 @@ class ContainerTest extends TestCase
 
         $this->assertSame($first, $second);
 
-        $weak = \WeakReference::create($first);
+        $weak = WeakReference::create($first);
         unset($first, $second);
         gc_collect_cycles();
 
@@ -424,7 +425,7 @@ class ContainerTest extends TestCase
 
         $this->assertSame($first, $second);
 
-        $weak = \WeakReference::create($first);
+        $weak = WeakReference::create($first);
         unset($first, $second);
         gc_collect_cycles();
 
@@ -448,7 +449,7 @@ class ContainerTest extends TestCase
 
         $this->assertSame($first, $second);
 
-        $weak = \WeakReference::create($first);
+        $weak = WeakReference::create($first);
         unset($first, $second);
         gc_collect_cycles();
 
@@ -489,7 +490,7 @@ class ContainerTest extends TestCase
 
         $this->assertSame($first, $second);
 
-        $weak = \WeakReference::create($first);
+        $weak = WeakReference::create($first);
         unset($first, $second);
         gc_collect_cycles();
 
@@ -513,7 +514,7 @@ class ContainerTest extends TestCase
 
         $this->assertSame($first, $second);
 
-        $weak = \WeakReference::create($first);
+        $weak = WeakReference::create($first);
         unset($first, $second);
         gc_collect_cycles();
 
@@ -536,7 +537,7 @@ class ContainerTest extends TestCase
 
         $this->assertSame($first, $second);
 
-        $weak = \WeakReference::create($first);
+        $weak = WeakReference::create($first);
         unset($first, $second);
         gc_collect_cycles();
 
@@ -945,7 +946,7 @@ class ContainerTest extends TestCase
 
         $result     = $container->resolve(Resolution::for(ClassWithLiminalDependency::class));
         $dependency = $result->dependency;
-        $weak       = \WeakReference::create($dependency);
+        $weak       = WeakReference::create($dependency);
         unset($result, $dependency);
         gc_collect_cycles();
 
@@ -1281,7 +1282,7 @@ class ContainerTest extends TestCase
         );
 
         $instance = $container->resolve(Resolution::for(LiminalInterface::class));
-        $weak     = \WeakReference::create($instance);
+        $weak     = WeakReference::create($instance);
         unset($instance);
         gc_collect_cycles();
 

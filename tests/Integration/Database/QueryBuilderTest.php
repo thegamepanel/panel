@@ -14,6 +14,7 @@ use PDO;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 #[Group('integration'), Group('database'), Group('query-builder')]
 class QueryBuilderTest extends TestCase
@@ -664,9 +665,9 @@ class QueryBuilderTest extends TestCase
                 $conn->execute(
                     Insert::into('qb_users')->values(['name' => 'Alice', 'email' => 'alice@example.com']),
                 );
-                throw new \RuntimeException('force rollback');
+                throw new RuntimeException('force rollback');
             });
-        } catch (\RuntimeException) {
+        } catch (RuntimeException) {
             // expected
         }
 

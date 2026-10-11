@@ -14,6 +14,7 @@ use Engine\Container\ReflectionHelper;
 use Engine\Container\Resolution;
 use ReflectionIntersectionType;
 use ReflectionNamedType;
+use ReflectionType;
 use ReflectionUnionType;
 use Throwable;
 
@@ -51,7 +52,7 @@ final class GenericResolver implements Resolver
             return $dependency->default;
         }
 
-        /** @var \ReflectionType|null $type */
+        /** @var ReflectionType|null $type */
         $type = $dependency->type;
 
         throw DependencyResolutionException::cannotResolve($type?->__toString() ?? 'unknown');

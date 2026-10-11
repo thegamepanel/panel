@@ -20,7 +20,9 @@ use PDO;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use ReflectionAttribute;
 use ReflectionClass;
+use ReflectionNamedType;
 use Tests\Unit\Database\Fixtures\ClassWithDatabaseDependency;
 use Tests\Unit\Database\Fixtures\ClassWithInvalidDatabaseType;
 
@@ -169,7 +171,7 @@ class DatabaseResolverTest extends TestCase
         );
     }
 
-    private function connectionReflectionType(): \ReflectionNamedType
+    private function connectionReflectionType(): ReflectionNamedType
     {
         return new ReflectionClass(ClassWithDatabaseDependency::class)
             ->getConstructor()
@@ -186,7 +188,7 @@ class DatabaseResolverTest extends TestCase
             if ($param->getName() === $paramName) {
                 $resolvable = null;
 
-                foreach ($param->getAttributes(Resolvable::class, \ReflectionAttribute::IS_INSTANCEOF) as $attr) {
+                foreach ($param->getAttributes(Resolvable::class, ReflectionAttribute::IS_INSTANCEOF) as $attr) {
                     $resolvable = $attr->newInstance();
                 }
 

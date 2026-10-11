@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Database\Attributes;
 
+use Attribute;
 use Engine\Container\Contracts\Resolvable;
 use Engine\Database\Attributes\Database;
 use PHPUnit\Framework\Attributes\Group;
@@ -62,9 +63,9 @@ class DatabaseTest extends TestCase
     #[Test]
     public function targetsParametersOnly(): void
     {
-        $attributes = new ReflectionClass(Database::class)->getAttributes(\Attribute::class);
+        $attributes = new ReflectionClass(Database::class)->getAttributes(Attribute::class);
 
         $this->assertCount(1, $attributes);
-        $this->assertSame(\Attribute::TARGET_PARAMETER, $attributes[0]->newInstance()->flags);
+        $this->assertSame(Attribute::TARGET_PARAMETER, $attributes[0]->newInstance()->flags);
     }
 }

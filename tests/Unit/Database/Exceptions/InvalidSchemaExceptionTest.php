@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Database\Exceptions;
 
 use Engine\Database\Exceptions\InvalidSchemaException;
+use LogicException;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -16,7 +17,7 @@ class InvalidSchemaExceptionTest extends TestCase
     {
         $exception = InvalidSchemaException::incompatibleModifier('precision', 'DATE');
 
-        $this->assertInstanceOf(\LogicException::class, $exception);
+        $this->assertInstanceOf(LogicException::class, $exception);
         $this->assertSame(
             'The modifier "precision" is not compatible with the type "DATE"',
             $exception->getMessage(),
@@ -28,7 +29,7 @@ class InvalidSchemaExceptionTest extends TestCase
     {
         $exception = InvalidSchemaException::requiresGeneratedColumn('virtual');
 
-        $this->assertInstanceOf(\LogicException::class, $exception);
+        $this->assertInstanceOf(LogicException::class, $exception);
         $this->assertSame(
             'The modifier "virtual" can only be used on a generated column',
             $exception->getMessage(),
@@ -40,7 +41,7 @@ class InvalidSchemaExceptionTest extends TestCase
     {
         $exception = InvalidSchemaException::incompleteForeignKey('references');
 
-        $this->assertInstanceOf(\LogicException::class, $exception);
+        $this->assertInstanceOf(LogicException::class, $exception);
         $this->assertSame(
             'Foreign key is missing a "references" clause',
             $exception->getMessage(),

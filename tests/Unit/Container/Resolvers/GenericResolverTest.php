@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Container\Resolvers;
 
+use Countable;
 use Engine\Container\Attributes\Named;
 use Engine\Container\Bindings\Binding;
 use Engine\Container\Bindings\BindingCatalogue;
@@ -16,6 +17,11 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use ReflectionIntersectionType;
+use ReflectionNamedType;
+use ReflectionUnionType;
+use RuntimeException;
+use Stringable;
 use Tests\Unit\Container\Fixtures\AbstractInterface;
 use Tests\Unit\Container\Fixtures\ClassWithAbstractUnionParam;
 use Tests\Unit\Container\Fixtures\ClassWithDependency;
@@ -184,7 +190,7 @@ class GenericResolverTest extends TestCase
     {
         $resolver   = new GenericResolver();
         $instance   = new StringableCountable();
-        $binding    = new Binding(\Stringable::class, instance: $instance);
+        $binding    = new Binding(Stringable::class, instance: $instance);
         $dependency = $this->dependencyFrom(ClassWithIntersectionParam::class, 'dep');
 
         $result = $resolver->resolve($dependency, $this->buildContainer($binding));
@@ -202,7 +208,7 @@ class GenericResolverTest extends TestCase
     {
         $resolver   = new GenericResolver();
         $instance   = new ClassWithMethods(); // does not implement Countable
-        $binding    = new Binding(\Stringable::class, instance: $instance);
+        $binding    = new Binding(Stringable::class, instance: $instance);
         $dependency = $this->dependencyFrom(ClassWithIntersectionParam::class, 'dep');
 
         $this->expectException(DependencyResolutionException::class);
@@ -220,7 +226,7 @@ class GenericResolverTest extends TestCase
         $resolver   = new GenericResolver();
         $fallback   = new StringableCountable();
         $instance   = new ClassWithMethods(); // does not implement Countable
-        $binding    = new Binding(\Stringable::class, instance: $instance);
+        $binding    = new Binding(Stringable::class, instance: $instance);
         $dependency = $this->dependencyFrom(ClassWithIntersectionParam::class, 'dep', hasDefault: true, default: $fallback);
 
         $result = $resolver->resolve($dependency, $this->buildContainer($binding));
@@ -258,7 +264,7 @@ class GenericResolverTest extends TestCase
     {
         $resolver   = new GenericResolver();
         $instance   = new StringableCountable();
-        $binding    = new Binding(\Stringable::class, instance: $instance);
+        $binding    = new Binding(Stringable::class, instance: $instance);
         $dependency = $this->dependencyFrom(ClassWithDnfUnionParam::class, 'dep');
 
         $result = $resolver->resolve($dependency, $this->buildContainer($binding));
@@ -386,7 +392,7 @@ class GenericResolverTest extends TestCase
     public function resolveIntersectionTypeWithConcreteBindingResolvesConcreteClass(): void
     {
         $resolver   = new GenericResolver();
-        $binding    = new Binding(\Stringable::class, concrete: StringableCountable::class);
+        $binding    = new Binding(Stringable::class, concrete: StringableCountable::class);
         $dependency = $this->dependencyFrom(ClassWithIntersectionParam::class, 'dep');
 
         $result = $resolver->resolve($dependency, $this->buildContainer($binding));
@@ -403,7 +409,7 @@ class GenericResolverTest extends TestCase
     {
         $resolver   = new GenericResolver();
         $instance   = new StringableCountable();
-        $binding    = new Binding(\Stringable::class, factory: static fn () => $instance);
+        $binding    = new Binding(Stringable::class, factory: static fn () => $instance);
         $dependency = $this->dependencyFrom(ClassWithIntersectionParam::class, 'dep');
 
         $result = $resolver->resolve($dependency, $this->buildContainer($binding));
@@ -420,7 +426,7 @@ class GenericResolverTest extends TestCase
     public function resolveIntersectionTypeWithPassBindingThrowsDependencyResolutionException(): void
     {
         $resolver   = new GenericResolver();
-        $binding    = new Binding(\Stringable::class); // no instance, concrete, or factory
+        $binding    = new Binding(Stringable::class); // no instance, concrete, or factory
         $dependency = $this->dependencyFrom(ClassWithIntersectionParam::class, 'dep');
 
         $this->expectException(DependencyResolutionException::class);
@@ -439,7 +445,7 @@ class GenericResolverTest extends TestCase
         $resolver = new GenericResolver();
         /** @var class-string $nonExistent */
         $nonExistent = 'NonExistentClass';
-        $binding     = new Binding(\Stringable::class, concrete: $nonExistent);
+        $binding     = new Binding(Stringable::class, concrete: $nonExistent);
         $dependency  = $this->dependencyFrom(ClassWithIntersectionParam::class, 'dep');
 
         $this->expectException(DependencyResolutionException::class);
@@ -462,8 +468,8 @@ class GenericResolverTest extends TestCase
     {
         $resolver   = new GenericResolver();
         $instance   = new StringableCountable();
-        $pass       = new Binding(\Countable::class); // pass binding — no instance/concrete/factory
-        $valid      = new Binding(\Stringable::class, instance: $instance);
+        $pass       = new Binding(Countable::class); // pass binding — no instance/concrete/factory
+        $valid      = new Binding(Stringable::class, instance: $instance);
         $dependency = $this->dependencyFrom(ClassWithIntersectionParam::class, 'dep');
 
         $result = $resolver->resolve($dependency, $this->buildContainer($pass, $valid));
@@ -488,8 +494,8 @@ class GenericResolverTest extends TestCase
         $instance = new StringableCountable();
         /** @var class-string $nonExistent */
         $nonExistent = 'NonExistentClass';
-        $bad         = new Binding(\Countable::class, concrete: $nonExistent);
-        $valid       = new Binding(\Stringable::class, instance: $instance);
+        $bad         = new Binding(Countable::class, concrete: $nonExistent);
+        $valid       = new Binding(Stringable::class, instance: $instance);
         $dependency  = $this->dependencyFrom(ClassWithIntersectionParam::class, 'dep');
 
         $result = $resolver->resolve($dependency, $this->buildContainer($bad, $valid));
@@ -543,12 +549,12 @@ class GenericResolverTest extends TestCase
         $constructor = new ReflectionClass($class)->getConstructor();
 
         if ($constructor === null) {
-            throw new \RuntimeException("{$class} has no constructor");
+            throw new RuntimeException("{$class} has no constructor");
         }
 
         foreach ($constructor->getParameters() as $param) {
             if ($param->getName() === $paramName) {
-                /** @var \ReflectionNamedType|\ReflectionUnionType|\ReflectionIntersectionType|null $type */
+                /** @var ReflectionNamedType|ReflectionUnionType|ReflectionIntersectionType|null $type */
                 $type = $param->getType();
 
                 return new Dependency(
@@ -563,6 +569,6 @@ class GenericResolverTest extends TestCase
             }
         }
 
-        throw new \RuntimeException("Parameter '{$paramName}' not found on {$class}");
+        throw new RuntimeException("Parameter '{$paramName}' not found on {$class}");
     }
 }

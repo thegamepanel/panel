@@ -158,19 +158,6 @@ class InstanceCacheTest extends TestCase
     }
 
     /**
-     * - `put()` returns the cache, so calls can be chained.
-     *
-     * @param Closure(): InstanceCache<bool> $cache
-     */
-    #[Test, DataProvider('cacheDataProvider')]
-    public function putReturnsTheCache(Closure $cache): void
-    {
-        $cache = $cache();
-
-        $this->assertSame($cache, $cache->put(ClassWithMethods::class, new ClassWithMethods()));
-    }
-
-    /**
      * - A put given both a name and a qualifier is rejected, since a resolution cannot
      *   have both, and the exception names the class, name and qualifier.
      *

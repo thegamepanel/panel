@@ -78,10 +78,8 @@ final class InstanceCache
      * @param TClass               $instance
      * @param string|null          $name
      * @param class-string|null    $qualifier
-     *
-     * @return static
      */
-    public function put(string $class, object $instance, ?string $name = null, ?string $qualifier = null): self
+    public function put(string $class, object $instance, ?string $name = null, ?string $qualifier = null): void
     {
         if ($name !== null && $qualifier !== null) {
             throw InvalidResolutionException::doubleIdentifiedClass($class, $name, $qualifier);
@@ -96,8 +94,6 @@ final class InstanceCache
         } else {
             $this->instances[$class] = $storageInstance;
         }
-
-        return $this;
     }
 
     /**

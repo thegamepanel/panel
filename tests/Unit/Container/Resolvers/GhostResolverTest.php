@@ -3,10 +3,13 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Container\Resolvers;
 
+use Engine\Container\Attributes\Named;
 use Engine\Container\Bindings\Binding;
 use Engine\Container\Bindings\BindingCatalogue;
 use Engine\Container\Container;
+use Engine\Container\Contracts\Qualifier;
 use Engine\Container\Dependency;
+use Engine\Container\Exceptions\BindingNotFoundException;
 use Engine\Container\Exceptions\DependencyResolutionException;
 use Engine\Container\Resolvers\GenericResolver;
 use Engine\Container\Resolvers\GhostResolver;
@@ -25,6 +28,8 @@ use Tests\Unit\Container\Fixtures\ClassWithGhostDependency;
 use Tests\Unit\Container\Fixtures\ClassWithProperty;
 use Tests\Unit\Container\Fixtures\ClassWithRequiredScalarParam;
 use Tests\Unit\Container\Fixtures\ConcreteClass;
+use Tests\Unit\Container\Fixtures\ConcreteClassWithProperty;
+use Tests\Unit\Container\Fixtures\TestQualifier;
 
 #[Group('unit'), Group('container'), Group('ghost-resolver')]
 class GhostResolverTest extends TestCase
@@ -87,6 +92,26 @@ class GhostResolverTest extends TestCase
     }
 
     /**
+     * - A named dependency creates the ghost for the concrete class of the binding the
+     *   name selects, not of the abstract's own binding.
+     */
+    #[Test]
+    public function resolveWithNamedBindingCreatesGhostForNamedConcreteClass(): void
+    {
+        $resolver = new GhostResolver();
+        $binding  = new Binding(
+            AbstractInterface::class,
+            concrete: ConcreteClass::class,
+            namedMap: ['primary' => new Binding(AbstractInterface::class, concrete: ConcreteClassWithProperty::class)],
+        );
+        $dependency = $this->dependencyFrom(ClassWithGhostAbstractDependency::class, 'dep', name: new Named('primary'));
+
+        $ghost = $resolver->resolve($dependency, $this->buildContainer($binding));
+
+        $this->assertInstanceOf(ConcreteClassWithProperty::class, $ghost);
+    }
+
+    /**
      * - A ghost for a class that has no explicit constructor can still be initialized
      *   without error, since the resolver skips the constructor invocation step when
      *   the class does not define __construct.
@@ -144,6 +169,42 @@ class GhostResolverTest extends TestCase
 
         $resolver->resolve($dependency, $this->buildContainer());
     }
+
+    /**
+     * - A named dependency with no binding under that name throws, rather than creating
+     *   a ghost of the requested class, because the name selects nothing.
+     */
+    #[Test]
+    public function resolveWithNameAndNoBindingThrowsBindingNotFoundException(): void
+    {
+        $resolver   = new GhostResolver();
+        $dependency = $this->dependencyFrom(ClassWithGhostDependency::class, 'dependency', name: new Named('primary'));
+
+        $this->expectException(BindingNotFoundException::class);
+        $this->expectExceptionMessage(sprintf('No binding found for %s with name primary', ClassWithProperty::class));
+
+        $resolver->resolve($dependency, $this->buildContainer());
+    }
+
+    /**
+     * - A qualified dependency with no binding under that qualifier throws, rather than
+     *   creating a ghost of the requested class, because the qualifier selects nothing.
+     */
+    #[Test]
+    public function resolveWithQualifierAndNoBindingThrowsBindingNotFoundException(): void
+    {
+        $resolver   = new GhostResolver();
+        $dependency = $this->dependencyFrom(ClassWithGhostDependency::class, 'dependency', qualifier: new TestQualifier());
+
+        $this->expectException(BindingNotFoundException::class);
+        $this->expectExceptionMessage(sprintf(
+            'No binding found for %s qualified by %s',
+            ClassWithProperty::class,
+            TestQualifier::class,
+        ));
+
+        $resolver->resolve($dependency, $this->buildContainer());
+    }
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
@@ -162,8 +223,12 @@ class GhostResolverTest extends TestCase
         );
     }
 
-    private function dependencyFrom(string $class, string $paramName): Dependency
-    {
+    private function dependencyFrom(
+        string     $class,
+        string     $paramName,
+        ?Named     $name = null,
+        ?Qualifier $qualifier = null,
+    ): Dependency {
         $constructor = new ReflectionClass($class)->getConstructor();
 
         if ($constructor === null) {
@@ -175,7 +240,7 @@ class GhostResolverTest extends TestCase
                 /** @var ReflectionNamedType|ReflectionUnionType|ReflectionIntersectionType|null $type */
                 $type = $param->getType();
 
-                return new Dependency($param->getName(), $type);
+                return new Dependency($param->getName(), $type, name: $name, qualifier: $qualifier);
             }
         }
 

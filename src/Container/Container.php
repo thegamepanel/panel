@@ -88,7 +88,11 @@ final class Container
         $class = $this->bindings->resolveAlias($resolution->class);
 
         // Find the binding for the class, name, and qualifier.
-        $binding = $this->findBinding($resolution);
+        $binding = $this->findBinding(
+            $resolution->class,
+            $resolution->isNamed() ? new Named($resolution->name) : null,
+            $resolution->qualifier,
+        );
 
         // Set the liminal flag based on the resolution, binding, and class
         // attributes.
@@ -162,6 +166,38 @@ final class Container
     }
 
     /**
+     * Find the binding for a class, throwing when a name or qualifier selects
+     * nothing.
+     *
+     * @template TClass of object
+     *
+     * @param class-string<TClass> $class
+     * @param Named|null           $named
+     * @param Qualifier|null       $qualifier
+     *
+     * @return Binding<TClass>|null
+     */
+    public function findBinding(string $class, ?Named $named = null, ?Qualifier $qualifier = null): ?Binding
+    {
+        // Get the binding for the class, name, and qualifier.
+        $binding = $this->bindings->get($class, $named, $qualifier);
+
+        // If there isn't, and there's a name or qualifier, we throw an
+        // exception, because we can't resolve it.
+        if ($binding === null) {
+            if ($named !== null) {
+                throw BindingNotFoundException::named($class, $named->name);
+            }
+
+            if ($qualifier !== null) {
+                throw BindingNotFoundException::qualified($class, $qualifier::class);
+            }
+        }
+
+        return $binding;
+    }
+
+    /**
      * Resolve a new instance, tracking it on the resolution stack while it is
      * built, and caching it if it's shared.
      *
@@ -229,36 +265,6 @@ final class Container
         return $resolution->isLiminal()
                    || ($binding->liminal ?? false)
                    || $this->hasClassAttribute(Liminal::class, $class, $binding?->concrete);
-    }
-
-    /**
-     * @template TClass of object
-     *
-     * @param Resolution<TClass> $resolution
-     *
-     * @return Binding<TClass>|null
-     */
-    private function findBinding(Resolution $resolution): ?Binding
-    {
-        // Get the binding for the class, name, and qualifier.
-        $binding = $this->bindings->get(
-            $resolution->class,
-            $resolution->isNamed() ? new Named($resolution->name) : null,
-            $resolution->qualifier,
-        );
-
-        // If there isn't, and there's a name or qualifier, we throw an
-        // exception, because we can't resolve it.
-        if ($binding === null) {
-            if ($resolution->isNamed()) {
-                throw BindingNotFoundException::named($resolution->class, $resolution->name);
-            }
-
-            if ($resolution->isQualified()) {
-                throw BindingNotFoundException::qualified($resolution->class, $resolution->qualifier::class);
-            }
-        }
-        return $binding;
     }
 
     /**

@@ -10,7 +10,7 @@ use WeakReference;
  * Instance Cache
  * --------------
  *
- * This class is used to cache resolved instances of caches, whether they're
+ * This class is used to cache resolved instances of classes, whether they're
  * resolved directly by type, name, or qualifier. It supports both strong and
  * weak references, allowing for flexible memory management.
  *

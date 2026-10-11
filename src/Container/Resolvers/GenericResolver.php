@@ -6,6 +6,7 @@ namespace Engine\Container\Resolvers;
 use Engine\Container\Container;
 use Engine\Container\Contracts\Resolver;
 use Engine\Container\Dependency;
+use Engine\Container\Exceptions\CircularDependencyException;
 use Engine\Container\Exceptions\DependencyResolutionException;
 use Engine\Container\Exceptions\InvalidClassException;
 use Engine\Container\Invocation;
@@ -13,6 +14,7 @@ use Engine\Container\ReflectionHelper;
 use Engine\Container\Resolution;
 use ReflectionIntersectionType;
 use ReflectionNamedType;
+use ReflectionType;
 use ReflectionUnionType;
 use Throwable;
 
@@ -50,7 +52,7 @@ final class GenericResolver implements Resolver
             return $dependency->default;
         }
 
-        /** @var \ReflectionType|null $type */
+        /** @var ReflectionType|null $type */
         $type = $dependency->type;
 
         throw DependencyResolutionException::cannotResolve($type?->__toString() ?? 'unknown');
@@ -233,6 +235,8 @@ final class GenericResolver implements Resolver
 
                 /** @var TType&object */
                 return $this->resolveIntersectionType($resolvable, $dependency, $container, $arguments);
+            } catch (CircularDependencyException $e) {
+                throw $e;
             } catch (Throwable $e) {
                 throw DependencyResolutionException::union($type->__toString(), previous: $e);
             }

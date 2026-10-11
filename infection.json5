@@ -14,19 +14,26 @@
     "@default"                   : true,
     "TrueValue"                  : {
       "ignore": [
-        "Engine\\Container\\Container::lazy",
         "Engine\\Database\\Schema\\Columns\\BaseColumn::first"
       ]
     },
     "FalseValue"                 : {
       "ignore": [
-        "Engine\\Container\\Container::resolve",
+        "Engine\\Container\\Container::isLiminal",
         "Engine\\Database\\Schema\\Columns\\BaseColumn::notNull"
+      ]
+    },
+    "Throw_"                     : {
+      "ignore": [
+        // Removing the circular dependency throw lets a self-dependent class
+        // recurse until the process times out, so the mutant times out
+        // rather than being killed.
+        "Engine\\Container\\Container::enterResolutionStack"
       ]
     },
     "Break_"                     : {
       "ignore": [
-        "Engine\\Container\\Container::collectDependencies::392"
+        "Engine\\Container\\Container::collectDependencies"
       ]
     },
     "Coalesce"                   : {
@@ -127,6 +134,9 @@
     },
     "MethodCallRemoval"          : {
       "ignore": [
+        // Removing the call that pushes onto the resolution stack lets a
+        // self-dependent class recurse until the process times out.
+        "Engine\\Container\\Container::resolveFresh",
         // ConnectionConfig's constructor invariants guarantee these are
         // non-null when socket is null. The asserts are defensive — they
         // encode the invariant for PHPStan and any future maintainer, but

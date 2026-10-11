@@ -7,6 +7,7 @@ use Engine\Database\Exceptions\QueryException;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 #[Group('unit'), Group('database'), Group('query-exception')]
 class QueryExceptionTest extends TestCase
@@ -17,7 +18,7 @@ class QueryExceptionTest extends TestCase
     #[Test]
     public function constructorUsesPreviousExceptionMessage(): void
     {
-        $previous  = new \RuntimeException('connection lost');
+        $previous  = new RuntimeException('connection lost');
         $exception = new QueryException('SELECT 1', [], previous: $previous);
 
         $this->assertSame('connection lost', $exception->getMessage());
@@ -29,7 +30,7 @@ class QueryExceptionTest extends TestCase
     #[Test]
     public function constructorUsesExplicitMessageOverPrevious(): void
     {
-        $previous  = new \RuntimeException('connection lost');
+        $previous  = new RuntimeException('connection lost');
         $exception = new QueryException('SELECT 1', [], 'custom message', $previous);
 
         $this->assertSame('custom message', $exception->getMessage());

@@ -55,4 +55,31 @@ final class DependencyResolutionException extends RuntimeException implements Co
             'Cannot resolve a dependency using both a name and a qualifier.',
         );
     }
+
+    public static function parameter(string $parameter, string $function, ?Throwable $previous = null): self
+    {
+        return new self(
+            sprintf(
+                'Cannot resolve the parameter "$%s" of "%s".',
+                $parameter,
+                $function,
+            ),
+            previous: $previous,
+        );
+    }
+
+    /**
+     * @param class-string $class
+     * @param class-string $instance
+     *
+     * @return self
+     */
+    public static function proxy(string $class, string $instance): self
+    {
+        return new self(sprintf(
+            'Cannot initialise the lazy proxy for "%s" with an instance of "%s".',
+            $class,
+            $instance,
+        ));
+    }
 }

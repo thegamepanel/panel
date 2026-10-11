@@ -39,7 +39,7 @@ final class GhostResolver implements Resolver
          * @var class-string<TType&object> $class
          * @var class-string<TType&object> $concreteClass
          */
-        $concreteClass = $container->bindings->get($class, $dependency->name, $dependency->qualifier)->concrete ?? $class;
+        $concreteClass = $container->findBinding($class, $dependency->name, $dependency->qualifier)->concrete ?? $class;
 
         /** @var TType&object $instance */
         $instance = ReflectionHelper::getClassReflector($concreteClass)

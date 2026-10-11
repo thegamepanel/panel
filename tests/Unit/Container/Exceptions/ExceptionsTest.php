@@ -4,23 +4,74 @@ declare(strict_types=1);
 namespace Tests\Unit\Container\Exceptions;
 
 use Engine\Container\Attributes\NoResolution;
+use Engine\Container\Contracts\ContainerException;
 use Engine\Container\Exceptions\BindingNotFoundException;
+use Engine\Container\Exceptions\CircularDependencyException;
 use Engine\Container\Exceptions\DependencyResolutionException;
+use Engine\Container\Exceptions\InvalidAttributeException;
 use Engine\Container\Exceptions\InvalidClassException;
 use Engine\Container\Exceptions\InvalidFunctionException;
 use Engine\Container\Exceptions\InvalidInvocationException;
 use Engine\Container\Exceptions\InvalidMethodException;
+use Engine\Container\Exceptions\InvalidResolutionException;
 use Engine\Container\Exceptions\InvalidResolverException;
 use Engine\Container\Exceptions\MethodCallException;
 use Engine\Container\Exceptions\NotInstantiableException;
 use Engine\Container\Exceptions\UnresolvableClassException;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 #[Group('unit'), Group('container'), Group('exceptions')]
 class ExceptionsTest extends TestCase
 {
+    // -------------------------------------------------------------------------
+    // InvalidAttributeException
+    // -------------------------------------------------------------------------
+
+    /**
+     * - An attribute that is not a tracked marker produces a message naming it, and the
+     *   exception is an invalid argument that the container contract covers.
+     */
+    #[Test]
+    public function invalidAttributeNotMarkerProducesExpectedMessage(): void
+    {
+        $e = InvalidAttributeException::notMarker('SomeAttribute');
+
+        $this->assertInstanceOf(InvalidAttributeException::class, $e);
+        $this->assertInstanceOf(InvalidArgumentException::class, $e);
+        $this->assertInstanceOf(ContainerException::class, $e);
+        $this->assertSame(
+            'The attribute "SomeAttribute" is not a class-level marker the container tracks',
+            $e->getMessage(),
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // InvalidResolutionException
+    // -------------------------------------------------------------------------
+
+    /**
+     * - A class identified by both a name and a qualifier produces a message naming all
+     *   three, and the exception is an invalid argument that the container contract
+     *   covers.
+     */
+    #[Test]
+    public function invalidResolutionForDoubleIdentifiedClassProducesExpectedMessage(): void
+    {
+        $e = InvalidResolutionException::doubleIdentifiedClass('SomeClass', 'primary', 'SomeQualifier');
+
+        $this->assertInstanceOf(InvalidResolutionException::class, $e);
+        $this->assertInstanceOf(InvalidArgumentException::class, $e);
+        $this->assertInstanceOf(ContainerException::class, $e);
+        $this->assertSame(
+            'Class "SomeClass" cannot have both a name "primary", and qualifier "SomeQualifier".',
+            $e->getMessage(),
+        );
+    }
+
     // -------------------------------------------------------------------------
     // BindingNotFoundException
     // -------------------------------------------------------------------------
@@ -238,6 +289,82 @@ class ExceptionsTest extends TestCase
 
         $this->assertInstanceOf(DependencyResolutionException::class, $e);
         $this->assertSame('Cannot resolve a dependency using both a name and a qualifier.', $e->getMessage());
+    }
+
+    /**
+     * - A parameter resolution failure names the parameter and its function, and carries
+     *   the failure it wraps as the previous exception.
+     */
+    #[Test]
+    public function dependencyParameterProducesExpectedMessageAndPrevious(): void
+    {
+        $previous = new RuntimeException('inner');
+        $e        = DependencyResolutionException::parameter('dep', 'SomeClass::__construct', $previous);
+
+        $this->assertInstanceOf(DependencyResolutionException::class, $e);
+        $this->assertSame('Cannot resolve the parameter "$dep" of "SomeClass::__construct".', $e->getMessage());
+        $this->assertSame($previous, $e->getPrevious());
+    }
+
+    /**
+     * - A lazy proxy given an instance PHP does not accept names the proxy's class and the
+     *   instance's class.
+     */
+    #[Test]
+    public function dependencyProxyProducesExpectedMessage(): void
+    {
+        $e = DependencyResolutionException::proxy('ParentThing', 'ChildThing');
+
+        $this->assertInstanceOf(DependencyResolutionException::class, $e);
+        $this->assertSame(
+            'Cannot initialise the lazy proxy for "ParentThing" with an instance of "ChildThing".',
+            $e->getMessage(),
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // CircularDependencyException
+    // -------------------------------------------------------------------------
+
+    /**
+     * - A circular dependency names every entry in the chain in order, and the exception
+     *   is a runtime failure that the container contract covers.
+     */
+    #[Test]
+    public function circularDependencyProducesExpectedMessage(): void
+    {
+        $e = CircularDependencyException::make([
+            ['SomeClass', null, null],
+            ['OtherClass', null, null],
+            ['SomeClass', null, null],
+        ]);
+
+        $this->assertInstanceOf(CircularDependencyException::class, $e);
+        $this->assertInstanceOf(RuntimeException::class, $e);
+        $this->assertInstanceOf(ContainerException::class, $e);
+        $this->assertSame(
+            'Circular dependency detected: "SomeClass" -> "OtherClass" -> "SomeClass".',
+            $e->getMessage(),
+        );
+    }
+
+    /**
+     * - A named entry is reported with its name, and a qualified entry with its
+     *   qualifier class.
+     */
+    #[Test]
+    public function circularDependencyNamesNamedAndQualifiedEntries(): void
+    {
+        $e = CircularDependencyException::make([
+            ['SomeClass', 'primary', null],
+            ['OtherClass', null, 'SomeQualifier'],
+            ['SomeClass', 'primary', null],
+        ]);
+
+        $this->assertSame(
+            'Circular dependency detected: "SomeClass" named "primary" -> "OtherClass" qualified by "SomeQualifier" -> "SomeClass" named "primary".',
+            $e->getMessage(),
+        );
     }
 
     // -------------------------------------------------------------------------

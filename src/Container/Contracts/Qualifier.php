@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace Engine\Container\Contracts;
 
@@ -10,12 +11,4 @@ namespace Engine\Container\Contracts;
  */
 interface Qualifier
 {
-    /**
-     * Check if the qualifier is equal to another.
-     *
-     * @param Qualifier $other
-     *
-     * @return bool
-     */
-    public function equals(self $other): bool;
 }

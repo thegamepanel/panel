@@ -6,10 +6,14 @@ use PhpCsFixer\Config;
 use PhpCsFixer\Finder;
 
 return new Config()
-    ->setRiskyAllowed(false)
+    ->setRiskyAllowed(true)
     ->setRules([
         '@auto'       => true,
         '@PhpCsFixer' => true,
+
+        // Every file declares strict types. This is the only risky rule enabled; the
+        // rule sets above are the non-risky ones, so allowing risky rules adds nothing else.
+        'declare_strict_types' => true,
 
         // Opening braces on next line for classes and functions (Allman style).
         // Closures and control structures keep end-of-line brace.
@@ -107,8 +111,13 @@ return new Config()
             'default' => 'align_single_space_minimal',
         ],
 
-        // Do not add \ prefix to global-namespace classes (Stringable, Countable, etc.).
-        'global_namespace_import' => false,
+        // Import global-namespace classes (Stringable, Countable, etc.) rather than using
+        // a \ prefix, in code and in PHPDoc. Functions and constants are left as written.
+        'global_namespace_import' => [
+            'import_classes'   => true,
+            'import_constants' => null,
+            'import_functions' => null,
+        ],
 
         // Keep /** @var ... */ inline PHPDoc; do not convert to single-line // comments.
         'phpdoc_to_comment' => false,

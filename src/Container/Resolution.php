@@ -5,6 +5,7 @@ namespace Engine\Container;
 
 use Engine\Container\Contracts\Qualifier;
 use Engine\Container\Contracts\Resolvable;
+use Engine\Container\Exceptions\InvalidResolutionException;
 
 /**
  * @template TClass of object
@@ -83,6 +84,10 @@ final class Resolution
      */
     public function named(string $name): self
     {
+        if ($this->qualifier !== null) {
+            throw InvalidResolutionException::doubleIdentifiedClass($this->class, $name, $this->qualifier::class);
+        }
+
         $this->name = $name;
 
         return $this;
@@ -95,6 +100,10 @@ final class Resolution
      */
     public function qualifiedBy(Qualifier $qualifier): self
     {
+        if ($this->name !== null) {
+            throw InvalidResolutionException::doubleIdentifiedClass($this->class, $this->name, $qualifier::class);
+        }
+
         $this->qualifier = $qualifier;
 
         return $this;

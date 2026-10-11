@@ -6,6 +6,7 @@ namespace Tests\Unit\Database\Schema\Columns;
 use Engine\Database\Contracts\Query;
 use Engine\Database\Exceptions\InvalidSchemaException;
 use Engine\Database\Schema\Column;
+use JsonSerializable;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -209,7 +210,7 @@ class BaseColumnTest extends TestCase
     #[Test]
     public function defaultWithJsonSerializableEncodesAsJson(): void
     {
-        $obj = new class implements \JsonSerializable {
+        $obj = new class implements JsonSerializable {
             public function jsonSerialize(): mixed
             {
                 return ['key' => 'value'];

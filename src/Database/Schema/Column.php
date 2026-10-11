@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Engine\Database\Schema;
 
+use BackedEnum;
 use Engine\Database\Schema\Columns\BinaryColumn;
 use Engine\Database\Schema\Columns\BooleanColumn;
 use Engine\Database\Schema\Columns\DecimalColumn;
@@ -138,8 +139,8 @@ final readonly class Column
     /**
      * Create a new ENUM column.
      *
-     * @param string                                  $name
-     * @param array<string>|class-string<\BackedEnum> $values
+     * @param string                                 $name
+     * @param array<string>|class-string<BackedEnum> $values
      *
      * @return EnumColumn<EnumColumn::ENUM>
      */
@@ -151,8 +152,8 @@ final readonly class Column
     /**
      * Create a new SET column.
      *
-     * @param string                                  $name
-     * @param array<string>|class-string<\BackedEnum> $values
+     * @param string                                 $name
+     * @param array<string>|class-string<BackedEnum> $values
      *
      * @return EnumColumn<EnumColumn::SET>
      */

@@ -10,6 +10,7 @@ use Engine\Database\Contracts\Query;
 use Engine\Database\Exceptions\InvalidSchemaException;
 use Engine\Database\Schema\Concerns\HasComment;
 use Engine\Database\Schema\Concerns\HasDefault;
+use JsonException;
 use JsonSerializable;
 
 /**
@@ -223,7 +224,7 @@ abstract class BaseColumn implements Column
      *
      * @return string
      *
-     * @throws \JsonException
+     * @throws JsonException
      */
     public function toSql(): string
     {
@@ -289,7 +290,7 @@ abstract class BaseColumn implements Column
      *
      * @param string $sql
      *
-     * @throws \JsonException
+     * @throws JsonException
      */
     private function addDefaultSyntax(string &$sql): void
     {

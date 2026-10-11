@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Database\Schema\Columns;
 
+use AssertionError;
+use BackedEnum;
 use Engine\Database\Schema\Column;
 use Engine\Database\Schema\Columns\EnumColumn;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -142,7 +144,7 @@ class EnumColumnTest extends TestCase
     // -------------------------------------------------------------------------
 
     /**
-     * @return array<string, array{array<string>|class-string<\BackedEnum>, string, string}>
+     * @return array<string, array{array<string>|class-string<BackedEnum>, string, string}>
      */
     public static function validValues(): array
     {
@@ -173,7 +175,7 @@ class EnumColumnTest extends TestCase
     #[DataProvider('emptyValues')]
     public function enumRejectsEmptyValues(array|string $values): void
     {
-        $this->expectException(\AssertionError::class);
+        $this->expectException(AssertionError::class);
 
         EnumColumn::enum('status', $values);
     }
@@ -182,13 +184,13 @@ class EnumColumnTest extends TestCase
     #[DataProvider('emptyValues')]
     public function setRejectsEmptyValues(array|string $values): void
     {
-        $this->expectException(\AssertionError::class);
+        $this->expectException(AssertionError::class);
 
         EnumColumn::set('status', $values);
     }
 
     /**
-     * @return array<string, array{array<string>|class-string<\BackedEnum>}>
+     * @return array<string, array{array<string>|class-string<BackedEnum>}>
      */
     public static function emptyValues(): array
     {
@@ -201,7 +203,7 @@ class EnumColumnTest extends TestCase
     #[Test]
     public function enumRejectsNonBackedEnum(): void
     {
-        $this->expectException(\AssertionError::class);
+        $this->expectException(AssertionError::class);
 
         EnumColumn::enum('status', BasicEnum::class);
     }
@@ -209,7 +211,7 @@ class EnumColumnTest extends TestCase
     #[Test]
     public function setRejectsNonBackedEnum(): void
     {
-        $this->expectException(\AssertionError::class);
+        $this->expectException(AssertionError::class);
 
         EnumColumn::set('status', BasicEnum::class);
     }

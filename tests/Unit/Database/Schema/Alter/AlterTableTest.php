@@ -8,6 +8,7 @@ use Engine\Database\Schema\Alter\AlterTable;
 use Engine\Database\Schema\Column;
 use Engine\Database\Schema\Drop;
 use Engine\Database\Schema\Index;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -183,7 +184,7 @@ class AlterTableTest extends TestCase
     #[Test]
     public function dropThrowsForInvalidDropType(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
 
         $alter = new AlterTable('users');
         $alter->drop(Drop::table('other'));

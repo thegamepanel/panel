@@ -72,6 +72,47 @@ class BindingCatalogueTest extends TestCase
     }
 
     /**
+     * - Normalising an alias returns the class it points to.
+     */
+    #[Test]
+    public function resolveAliasReturnsTargetForRegisteredAlias(): void
+    {
+        $catalogue = new BindingCatalogue([], [ConcreteClass::class => AbstractInterface::class], []);
+
+        $this->assertSame(AbstractInterface::class, $catalogue->resolveAlias(ConcreteClass::class));
+    }
+
+    /**
+     * - Normalising a class that is not an alias returns the class unchanged.
+     */
+    #[Test]
+    public function resolveAliasReturnsClassWhenNotAnAlias(): void
+    {
+        $catalogue = new BindingCatalogue([], [ConcreteClass::class => AbstractInterface::class], []);
+
+        $this->assertSame(ClassWithMethods::class, $catalogue->resolveAlias(ClassWithMethods::class));
+    }
+
+    /**
+     * - Normalisation replaces an alias once, so an alias of an alias returns the first
+     *   target rather than following the chain.
+     */
+    #[Test]
+    public function resolveAliasReplacesOnlyOnce(): void
+    {
+        $catalogue = new BindingCatalogue(
+            [],
+            [
+                AbstractInterface::class => ConcreteClass::class,
+                ConcreteClass::class     => ClassWithMethods::class,
+            ],
+            [],
+        );
+
+        $this->assertSame(ConcreteClass::class, $catalogue->resolveAlias(AbstractInterface::class));
+    }
+
+    /**
      * - Providing a Named qualifier returns the specific named child binding from
      *   within the parent, enabling multiple distinct bindings for the same type.
      */

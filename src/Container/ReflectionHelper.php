@@ -11,11 +11,13 @@ use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionFunction;
+use ReflectionFunctionAbstract;
 use ReflectionIntersectionType;
 use ReflectionMethod;
 use ReflectionNamedType;
 use ReflectionParameter;
 use ReflectionUnionType;
+use stdClass;
 
 final readonly class ReflectionHelper
 {
@@ -186,6 +188,36 @@ final readonly class ReflectionHelper
     }
 
     /**
+     * Get the name of the function from the given reflection.
+     *
+     * @param ReflectionFunctionAbstract $reflector
+     *
+     * @return string
+     */
+    public static function getFunctionNameFromReflection(ReflectionFunctionAbstract $reflector): string
+    {
+        return $reflector instanceof ReflectionMethod
+            ? $reflector->class . '::' . $reflector->getName()
+            : $reflector->getName();
+    }
+
+    /**
+     * @template TClass of object
+     *
+     * @param class-string<TClass>|ReflectionClass<TClass> $class
+     *
+     * @return array<ReflectionAttribute<*>>
+     */
+    public static function getClassAttributes(ReflectionClass|string $class): array
+    {
+        if (is_string($class)) {
+            $class = self::getClassReflector($class);
+        }
+
+        return $class->getAttributes();
+    }
+
+    /**
      * @template TAttribute of object
      *
      * @param ReflectionClass<*>|ReflectionMethod|ReflectionFunction|ReflectionParameter $reflector
@@ -221,5 +253,58 @@ final readonly class ReflectionHelper
     {
         /** @var TLazyClass */
         return self::getClassReflector($class)->newLazyProxy($factory);
+    }
+
+    /**
+     * @param class-string $class
+     *
+     * @return bool
+     */
+    public static function canBeLazilyInstantiated(string $class): bool
+    {
+        $reflector = self::getClassReflector($class);
+
+        // If any parents down the class inheritance chain are internal classes,
+        // not including stdClass, then we cannot lazily instantiate this class.
+        for ($parent = $reflector; $parent !== false; $parent = $parent->getParentClass()) {
+            if ($parent->name !== stdClass::class && $parent->isInternal()) {
+                return false;
+            }
+        }
+
+        // If the class is an abstract class, interface, trait or
+        // enum, they cannot be instantiated and therefore cannot be
+        // proxied. We aren't using ReflectionClass::isInstantiable() here
+        // because it returns false for classes with private constructors,
+        // which we want to allow for lazy proxies.
+        return !(
+            $reflector->isAbstract()
+            || $reflector->isInterface()
+            || $reflector->isTrait()
+            || $reflector->isEnum()
+        );
+    }
+
+    /**
+     * @param class-string $class
+     *
+     * @return bool
+     */
+    public static function hasLazyProperties(string $class): bool
+    {
+        // Loop through the class and its parents to check for non-static,
+        // non-virtual properties.
+        for (
+            $reflector = self::getClassReflector($class);
+            $reflector !== false;
+            $reflector = $reflector->getParentClass()
+        ) {
+            // If it has any, return true.
+            if (array_any($reflector->getProperties(), fn ($property) => ! $property->isStatic() && ! $property->isVirtual())) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

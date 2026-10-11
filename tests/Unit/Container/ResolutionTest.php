@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Container;
 
+use Engine\Container\Exceptions\InvalidResolutionException;
 use Engine\Container\Resolution;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
@@ -106,6 +107,46 @@ class ResolutionTest extends TestCase
         $this->assertSame($instance, $result);
         $this->assertSame($qualifier, $instance->qualifier);
         $this->assertTrue($instance->isQualified());
+    }
+
+    /**
+     * - `named()` on a resolution that already has a qualifier throws, since a
+     *   resolution cannot be both named and qualified.
+     */
+    #[Test]
+    public function namedAfterQualifiedByThrowsInvalidResolutionException(): void
+    {
+        $instance = Resolution::for(ClassWithMethods::class)->qualifiedBy(new TestQualifier());
+
+        $this->expectException(InvalidResolutionException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Class "%s" cannot have both a name "%s", and qualifier "%s".',
+            ClassWithMethods::class,
+            'primary',
+            TestQualifier::class,
+        ));
+
+        $instance->named('primary');
+    }
+
+    /**
+     * - `qualifiedBy()` on a resolution that already has a name throws, for the same
+     *   reason.
+     */
+    #[Test]
+    public function qualifiedByAfterNamedThrowsInvalidResolutionException(): void
+    {
+        $instance = Resolution::for(ClassWithMethods::class)->named('primary');
+
+        $this->expectException(InvalidResolutionException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Class "%s" cannot have both a name "%s", and qualifier "%s".',
+            ClassWithMethods::class,
+            'primary',
+            TestQualifier::class,
+        ));
+
+        $instance->qualifiedBy(new TestQualifier());
     }
 
     /**

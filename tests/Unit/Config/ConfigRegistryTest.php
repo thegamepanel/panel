@@ -12,6 +12,7 @@ use Engine\Config\Modules\ModulesEnabled;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Tests\Unit\Config\Fixtures\MultiKeyConfigObject;
 use Tests\Unit\Config\Fixtures\TestConfigObject;
 use Tests\Unit\Config\Fixtures\ThrowingConfigObject;
@@ -374,7 +375,7 @@ class ConfigRegistryTest extends TestCase
             $this->assertNotNull($e->getPrevious());
 
             $previous = $e->getPrevious();
-            $this->assertInstanceOf(\RuntimeException::class, $previous);
+            $this->assertInstanceOf(RuntimeException::class, $previous);
             $this->assertSame('boom', $previous->getMessage());
         }
     }

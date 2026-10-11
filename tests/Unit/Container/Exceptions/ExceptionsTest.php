@@ -6,6 +6,7 @@ namespace Tests\Unit\Container\Exceptions;
 use Engine\Container\Attributes\NoResolution;
 use Engine\Container\Contracts\ContainerException;
 use Engine\Container\Exceptions\BindingNotFoundException;
+use Engine\Container\Exceptions\CircularDependencyException;
 use Engine\Container\Exceptions\DependencyResolutionException;
 use Engine\Container\Exceptions\InvalidAttributeException;
 use Engine\Container\Exceptions\InvalidClassException;
@@ -303,6 +304,51 @@ class ExceptionsTest extends TestCase
         $this->assertInstanceOf(DependencyResolutionException::class, $e);
         $this->assertSame('Cannot resolve the parameter "$dep" of "SomeClass::__construct".', $e->getMessage());
         $this->assertSame($previous, $e->getPrevious());
+    }
+
+    // -------------------------------------------------------------------------
+    // CircularDependencyException
+    // -------------------------------------------------------------------------
+
+    /**
+     * - A circular dependency names every entry in the chain in order, and the exception
+     *   is a runtime failure that the container contract covers.
+     */
+    #[Test]
+    public function circularDependencyProducesExpectedMessage(): void
+    {
+        $e = CircularDependencyException::make([
+            ['SomeClass', null, null],
+            ['OtherClass', null, null],
+            ['SomeClass', null, null],
+        ]);
+
+        $this->assertInstanceOf(CircularDependencyException::class, $e);
+        $this->assertInstanceOf(RuntimeException::class, $e);
+        $this->assertInstanceOf(ContainerException::class, $e);
+        $this->assertSame(
+            'Circular dependency detected: "SomeClass" -> "OtherClass" -> "SomeClass".',
+            $e->getMessage(),
+        );
+    }
+
+    /**
+     * - A named entry is reported with its name, and a qualified entry with its
+     *   qualifier class.
+     */
+    #[Test]
+    public function circularDependencyNamesNamedAndQualifiedEntries(): void
+    {
+        $e = CircularDependencyException::make([
+            ['SomeClass', 'primary', null],
+            ['OtherClass', null, 'SomeQualifier'],
+            ['SomeClass', 'primary', null],
+        ]);
+
+        $this->assertSame(
+            'Circular dependency detected: "SomeClass" named "primary" -> "OtherClass" qualified by "SomeQualifier" -> "SomeClass" named "primary".',
+            $e->getMessage(),
+        );
     }
 
     // -------------------------------------------------------------------------

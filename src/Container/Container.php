@@ -12,6 +12,7 @@ use Engine\Container\Contracts\Qualifier;
 use Engine\Container\Contracts\Resolvable;
 use Engine\Container\Contracts\Resolver;
 use Engine\Container\Exceptions\BindingNotFoundException;
+use Engine\Container\Exceptions\CircularDependencyException;
 use Engine\Container\Exceptions\DependencyResolutionException;
 use Engine\Container\Exceptions\InvalidInvocationException;
 use Engine\Container\Exceptions\MethodCallException;
@@ -41,6 +42,11 @@ final class Container
      * @var InstanceCache<true>
      */
     private InstanceCache $liminalInstances;
+
+    /**
+     * @var list<array{0: class-string, 1: string|null, 2: class-string|null}>
+     */
+    private array $resolving = [];
 
     /**
      * @var ClassAttributeCache
@@ -117,66 +123,91 @@ final class Container
             return $this->lazy($resolution);
         }
 
+        // Build the resolution entry.
+        $entry = [
+            $class,
+            $resolution->name,
+            $resolution->qualifier !== null ? $resolution->qualifier::class : null,
+        ];
+
+        $index = array_search($entry, $this->resolving, true);
+
+        // If we're resolving a class that is already being resolved, we have a
+        // circular dependency, so need to throw.
+        if ($index !== false) {
+            throw CircularDependencyException::make([...array_slice($this->resolving, $index), $entry]);
+        }
+
+        // Push the resolving entry onto the stack.
+        $this->resolving[] = $entry;
+
         // Grab the values and flags.
         $instance       = $binding?->instance;
         $shared         = $binding->shared ?? true;
         $resolvingClass = $class;
 
-        // If we have no instance but a binding, we can either invoke the
-        // factory from the binding if one exists or use the concrete class.
-        if ($instance === null && $binding !== null) {
-            if ($binding->factory !== null) {
-                $instance = $this->invoke(Invocation::callable($binding->factory));
-            } else if ($binding->concrete !== null) {
-                $resolvingClass = $binding->concrete;
+        try {
+            // If we have no instance but a binding, we can either invoke the
+            // factory from the binding if one exists or use the concrete class.
+            if ($instance === null && $binding !== null) {
+                if ($binding->factory !== null) {
+                    $instance = $this->invoke(Invocation::callable($binding->factory));
+                } else if ($binding->concrete !== null) {
+                    $resolvingClass = $binding->concrete;
+                }
             }
+
+            // If we still don't have an instance, we need to create one ourselves.
+            if ($instance === null) {
+                $reflector = ReflectionHelper::getClassReflector($resolvingClass);
+
+                // If we're here, and it has the 'no resolution' attribute, we can't
+                // automatically resolve it, so it's an exception.
+                if ($this->hasClassAttribute(NoResolution::class, $class, $binding?->concrete)) {
+                    throw UnresolvableClassException::make(
+                        $this->hasClassAttribute(NoResolution::class, $class) ? $class : $resolvingClass,
+                    );
+                }
+
+                // If it has the lazy attribute, it needs a lazy resolution.
+                if ($skipLazy === false && $this->hasClassAttribute(Lazy::class, $class, $binding?->concrete)) {
+                    return $this->lazy($resolution);
+                }
+
+                // We first need to make sure the class is instantiable.
+                if ($reflector->isInstantiable() === false) {
+                    throw NotInstantiableException::make($resolvingClass);
+                }
+
+                // Then we check if there's a constructor...
+                if ($reflector->hasMethod('__construct') === false) {
+                    // Because if there isn't, we instantiate like normal...
+                    $instance = new $resolvingClass();
+                } else {
+                    // But if there is, we need to invoke the constructor.
+                    $instance = $this->invoke(Invocation::constructor($resolvingClass));
+                }
+            }
+
+            /**
+             * This is just here to ensure that everything knows the type correctly.
+             *
+             * @var TClass $instance
+             */
+
+            // If it's shared, we need to store it and return it.
+            if ($shared) {
+                return $this->storeResolved($resolution, $instance, $liminal, $class);
+            }
+
+            // Otherwise, we just return the instance.
+            return $instance;
+        } finally {
+            // Once everything has been done, we need to remove the class from
+            // the resolving stack, so that it can be resolved again in the
+            // future.
+            array_pop($this->resolving);
         }
-
-        // If we still don't have an instance, we need to create one ourselves.
-        if ($instance === null) {
-            $reflector = ReflectionHelper::getClassReflector($resolvingClass);
-
-            // If we're here, and it has the 'no resolution' attribute, we can't
-            // automatically resolve it, so it's an exception.
-            if ($this->hasClassAttribute(NoResolution::class, $class, $binding?->concrete)) {
-                throw UnresolvableClassException::make(
-                    $this->hasClassAttribute(NoResolution::class, $class) ? $class : $resolvingClass,
-                );
-            }
-
-            // If it has the lazy attribute, it needs a lazy resolution.
-            if ($skipLazy === false && $this->hasClassAttribute(Lazy::class, $class, $binding?->concrete)) {
-                return $this->lazy($resolution);
-            }
-
-            // We first need to make sure the class is instantiable.
-            if ($reflector->isInstantiable() === false) {
-                throw NotInstantiableException::make($resolvingClass);
-            }
-
-            // Then we check if there's a constructor...
-            if ($reflector->hasMethod('__construct') === false) {
-                // Because if there isn't, we instantiate like normal...
-                $instance = new $resolvingClass();
-            } else {
-                // But if there is, we need to invoke the constructor.
-                $instance = $this->invoke(Invocation::constructor($resolvingClass));
-            }
-        }
-
-        /**
-         * This is just here to ensure that everything knows the type correctly.
-         *
-         * @var TClass $instance
-         */
-
-        // If it's shared, we need to store it and return it.
-        if ($shared) {
-            return $this->storeResolved($resolution, $instance, $liminal, $class);
-        }
-
-        // Otherwise, we just return the instance.
-        return $instance;
     }
 
     public function invoke(Invocation $invocation): mixed
@@ -386,8 +417,12 @@ final class Container
             try {
                 /** @phpstan-ignore argument.type */
                 $dependencies[$dependency->parameter] = $this->resolveDependency($dependency);
+            } catch (CircularDependencyException $e) {
+                // If it's a circular dependency, we just rethrow it, because
+                // it is an important exception that should take precedence.
+                throw $e;
             } catch (Throwable $e) {
-                // If there's any sort of error, we wrap it in an exception that
+                // But for anything else, we wrap it in an exception that
                 // specifies both the parameter, and the function or method
                 // that it belongs to.
                 throw DependencyResolutionException::parameter(

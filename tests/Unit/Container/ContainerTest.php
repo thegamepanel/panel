@@ -10,6 +10,7 @@ use Engine\Container\Bindings\Binding;
 use Engine\Container\Bindings\BindingCatalogue;
 use Engine\Container\Container;
 use Engine\Container\Exceptions\BindingNotFoundException;
+use Engine\Container\Exceptions\CircularDependencyException;
 use Engine\Container\Exceptions\DependencyResolutionException;
 use Engine\Container\Exceptions\InvalidClassException;
 use Engine\Container\Exceptions\InvalidInvocationException;
@@ -27,6 +28,12 @@ use ReflectionClass;
 use ReflectionFunction;
 use Tests\Unit\Container\Fixtures\AbstractInterface;
 use Tests\Unit\Container\Fixtures\AnotherTestQualifier;
+use Tests\Unit\Container\Fixtures\AttributeQualifier;
+use Tests\Unit\Container\Fixtures\ChainDependencyFirst;
+use Tests\Unit\Container\Fixtures\ChainDependencySecond;
+use Tests\Unit\Container\Fixtures\ChainDependencyThird;
+use Tests\Unit\Container\Fixtures\ClassLeadingIntoCircularDependency;
+use Tests\Unit\Container\Fixtures\ClassWithAbstractDependency;
 use Tests\Unit\Container\Fixtures\ClassWithDependency;
 use Tests\Unit\Container\Fixtures\ClassWithGhostAbstractDependency;
 use Tests\Unit\Container\Fixtures\ClassWithGhostDependency;
@@ -40,18 +47,39 @@ use Tests\Unit\Container\Fixtures\ClassWithNamedDependency;
 use Tests\Unit\Container\Fixtures\ClassWithNoResolution;
 use Tests\Unit\Container\Fixtures\ClassWithPrivateMethod;
 use Tests\Unit\Container\Fixtures\ClassWithProperty;
+use Tests\Unit\Container\Fixtures\ClassWithRepeatedDependency;
 use Tests\Unit\Container\Fixtures\ClassWithRequiredScalarParam;
 use Tests\Unit\Container\Fixtures\ClassWithScalarDefault;
 use Tests\Unit\Container\Fixtures\ClassWithThrowingAttribute;
 use Tests\Unit\Container\Fixtures\ClassWithVariadicParam;
 use Tests\Unit\Container\Fixtures\ConcreteClass;
+use Tests\Unit\Container\Fixtures\DecoratableInterface;
+use Tests\Unit\Container\Fixtures\DecoratedClass;
+use Tests\Unit\Container\Fixtures\DecoratingClass;
+use Tests\Unit\Container\Fixtures\EagerClassUsingGhostDependency;
+use Tests\Unit\Container\Fixtures\EagerClassUsingLazyDependency;
+use Tests\Unit\Container\Fixtures\GhostCircularFirst;
+use Tests\Unit\Container\Fixtures\GhostCircularSecond;
+use Tests\Unit\Container\Fixtures\LazyCircularFirst;
+use Tests\Unit\Container\Fixtures\LazyCircularSecond;
 use Tests\Unit\Container\Fixtures\LazyClass;
+use Tests\Unit\Container\Fixtures\LazyClassDependingOnEager;
 use Tests\Unit\Container\Fixtures\LazyClassWithNoResolution;
 use Tests\Unit\Container\Fixtures\LiminalClass;
 use Tests\Unit\Container\Fixtures\LiminalInterface;
+use Tests\Unit\Container\Fixtures\MutualDependencyFirst;
+use Tests\Unit\Container\Fixtures\MutualDependencySecond;
+use Tests\Unit\Container\Fixtures\NamedCircularFirst;
+use Tests\Unit\Container\Fixtures\NamedCircularSecond;
 use Tests\Unit\Container\Fixtures\NoResolutionInterface;
+use Tests\Unit\Container\Fixtures\QualifiedCircularFirst;
+use Tests\Unit\Container\Fixtures\QualifiedCircularSecond;
+use Tests\Unit\Container\Fixtures\SelfDependentClass;
+use Tests\Unit\Container\Fixtures\SelfDependentConcrete;
 use Tests\Unit\Container\Fixtures\TaggedQualifier;
 use Tests\Unit\Container\Fixtures\TestQualifier;
+use Tests\Unit\Container\Fixtures\UnionCircularFirst;
+use Tests\Unit\Container\Fixtures\UnionCircularSecond;
 
 #[Group('unit'), Group('container')]
 class ContainerTest extends TestCase
@@ -1506,6 +1534,387 @@ class ContainerTest extends TestCase
             );
             $this->assertInstanceOf(NotInstantiableException::class, $e->getPrevious());
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Circular dependencies
+    // -------------------------------------------------------------------------
+
+    /**
+     * - A class whose constructor requires itself throws a circular dependency naming
+     *   it twice, rather than exhausting the call stack.
+     */
+    #[Test]
+    public function resolveSelfDependentClassThrowsCircularDependencyException(): void
+    {
+        $container = $this->buildContainer();
+
+        $this->expectException(CircularDependencyException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Circular dependency detected: "%1$s" -> "%1$s".',
+            SelfDependentClass::class,
+        ));
+
+        $container->resolve(Resolution::for(SelfDependentClass::class));
+    }
+
+    /**
+     * - Two classes whose constructors require each other throw a circular dependency,
+     *   unwrapped by the parameter resolution of either constructor.
+     */
+    #[Test]
+    public function resolveMutuallyDependentClassesThrowsCircularDependencyException(): void
+    {
+        $container = $this->buildContainer();
+
+        $this->expectException(CircularDependencyException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Circular dependency detected: "%1$s" -> "%2$s" -> "%1$s".',
+            MutualDependencyFirst::class,
+            MutualDependencySecond::class,
+        ));
+
+        $container->resolve(Resolution::for(MutualDependencyFirst::class));
+    }
+
+    /**
+     * - A circular dependency through three classes names all four entries in order,
+     *   from the first appearance of the repeated entry to its repetition.
+     */
+    #[Test]
+    public function resolveChainOfThreeThrowsCircularDependencyNamingEveryEntry(): void
+    {
+        $container = $this->buildContainer();
+
+        $this->expectException(CircularDependencyException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Circular dependency detected: "%1$s" -> "%2$s" -> "%3$s" -> "%1$s".',
+            ChainDependencyFirst::class,
+            ChainDependencySecond::class,
+            ChainDependencyThird::class,
+        ));
+
+        $container->resolve(Resolution::for(ChainDependencyFirst::class));
+    }
+
+    /**
+     * - The chain starts at the first appearance of the repeated entry, so a class that
+     *   only leads into the circular dependency is not named.
+     */
+    #[Test]
+    public function resolveClassLeadingIntoCircularDependencyOmitsItFromTheChain(): void
+    {
+        $container = $this->buildContainer();
+
+        $this->expectException(CircularDependencyException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Circular dependency detected: "%1$s" -> "%2$s" -> "%1$s".',
+            MutualDependencyFirst::class,
+            MutualDependencySecond::class,
+        ));
+
+        $container->resolve(Resolution::for(ClassLeadingIntoCircularDependency::class));
+    }
+
+    /**
+     * - A named entry in the chain is reported with its name.
+     */
+    #[Test]
+    public function resolveCircularDependencyThroughNamedBindingNamesTheEntry(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(
+                NamedCircularSecond::class,
+                namedMap: ['inner' => new Binding(NamedCircularSecond::class)],
+            ),
+        );
+
+        $this->expectException(CircularDependencyException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Circular dependency detected: "%1$s" -> "%2$s" named "inner" -> "%1$s".',
+            NamedCircularFirst::class,
+            NamedCircularSecond::class,
+        ));
+
+        $container->resolve(Resolution::for(NamedCircularFirst::class));
+    }
+
+    /**
+     * - A qualified entry in the chain is reported with its qualifier class.
+     */
+    #[Test]
+    public function resolveCircularDependencyThroughQualifiedBindingNamesTheQualifier(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(
+                QualifiedCircularSecond::class,
+                qualifiedMap: [AttributeQualifier::class => new Binding(QualifiedCircularSecond::class)],
+            ),
+        );
+
+        $this->expectException(CircularDependencyException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Circular dependency detected: "%1$s" -> "%2$s" qualified by "%3$s" -> "%1$s".',
+            QualifiedCircularFirst::class,
+            QualifiedCircularSecond::class,
+            AttributeQualifier::class,
+        ));
+
+        $container->resolve(Resolution::for(QualifiedCircularFirst::class));
+    }
+
+    /**
+     * - An entry is identified by the class after alias normalisation, so a concrete
+     *   class requiring itself through its alias is reported under the abstract.
+     */
+    #[Test]
+    public function resolveCircularDependencyThroughAliasNamesTheAbstract(): void
+    {
+        $container = $this->buildContainerWithAlias(
+            new Binding(AbstractInterface::class, concrete: SelfDependentConcrete::class),
+            [SelfDependentConcrete::class => AbstractInterface::class],
+        );
+
+        $this->expectException(CircularDependencyException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Circular dependency detected: "%1$s" -> "%1$s".',
+            AbstractInterface::class,
+        ));
+
+        $container->resolve(Resolution::for(AbstractInterface::class));
+    }
+
+    /**
+     * - A factory whose parameters require its own abstract is a circular dependency,
+     *   because the entry is added before the factory is invoked.
+     */
+    #[Test]
+    public function resolveFactoryRequiringItsOwnAbstractThrowsCircularDependencyException(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(
+                AbstractInterface::class,
+                factory: static fn (ClassWithAbstractDependency $dependency): ConcreteClass => new ConcreteClass(),
+            ),
+        );
+
+        $this->expectException(CircularDependencyException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Circular dependency detected: "%1$s" -> "%2$s" -> "%1$s".',
+            AbstractInterface::class,
+            ClassWithAbstractDependency::class,
+        ));
+
+        $container->resolve(Resolution::for(AbstractInterface::class));
+    }
+
+    /**
+     * - A circular dependency reached through a union-typed parameter is not wrapped as
+     *   a union failure, because the generic resolver rethrows it unchanged.
+     */
+    #[Test]
+    public function resolveCircularDependencyThroughUnionParameterThrowsCircularDependencyException(): void
+    {
+        $container = $this->buildContainer();
+
+        $this->expectException(CircularDependencyException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Circular dependency detected: "%1$s" -> "%2$s" -> "%1$s".',
+            UnionCircularFirst::class,
+            UnionCircularSecond::class,
+        ));
+
+        $container->resolve(Resolution::for(UnionCircularFirst::class));
+    }
+
+    /**
+     * - A decorator requiring the named binding of its own abstract is not a circular
+     *   dependency, because the named resolution is a different entry.
+     */
+    #[Test]
+    public function resolveDecoratorRequiringNamedBindingOfItsAbstractResolves(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(
+                DecoratableInterface::class,
+                concrete: DecoratingClass::class,
+                namedMap: ['inner' => new Binding(DecoratableInterface::class, concrete: DecoratedClass::class)],
+            ),
+        );
+
+        $result = $container->resolve(Resolution::for(DecoratableInterface::class));
+
+        $this->assertInstanceOf(DecoratingClass::class, $result);
+        $this->assertInstanceOf(DecoratedClass::class, $result->inner);
+    }
+
+    /**
+     * - Two classes carrying #[Lazy] that require each other resolve, because each
+     *   request returns a proxy before any entry is added, and each proxy initialises
+     *   when a property is read.
+     */
+    #[Test]
+    public function resolveMutuallyDependentLazyClassesResolvesAndInitialisesOnAccess(): void
+    {
+        $container = $this->buildContainer();
+
+        $first = $container->resolve(Resolution::for(LazyCircularFirst::class));
+
+        $this->assertTrue(new ReflectionClass(LazyCircularFirst::class)->isUninitializedLazyObject($first));
+
+        $second = $first->second;
+
+        $this->assertFalse(new ReflectionClass(LazyCircularFirst::class)->isUninitializedLazyObject($first));
+        $this->assertTrue(new ReflectionClass(LazyCircularSecond::class)->isUninitializedLazyObject($second));
+
+        $back = $second->first;
+
+        $this->assertFalse(new ReflectionClass(LazyCircularSecond::class)->isUninitializedLazyObject($second));
+        $this->assertInstanceOf(LazyCircularFirst::class, $back);
+        $this->assertFalse(new ReflectionClass(LazyCircularFirst::class)->isUninitializedLazyObject($back));
+    }
+
+    /**
+     * - A lazy proxy initialised inside the constructor that requested it is a circular
+     *   dependency, because that constructor's entry is still on the stack.
+     */
+    #[Test]
+    public function resolveClassInitialisingLazyDependencyInItsConstructorThrowsCircularDependencyException(): void
+    {
+        $container = $this->buildContainer();
+
+        $this->expectException(CircularDependencyException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Circular dependency detected: "%1$s" -> "%2$s" -> "%1$s".',
+            EagerClassUsingLazyDependency::class,
+            LazyClassDependingOnEager::class,
+        ));
+
+        $container->resolve(Resolution::for(EagerClassUsingLazyDependency::class));
+    }
+
+    /**
+     * - A lazy request for a resolution already on the stack returns a proxy instead of
+     *   throwing. If this fails, the entry is being added before the lazy proxy step.
+     */
+    #[Test]
+    public function resolveLazilyWhileSameResolutionIsOnTheStackReturnsProxy(): void
+    {
+        $proxy     = null;
+        $container = null;
+        $container = $this->buildContainerWith(
+            new Binding(
+                ClassWithProperty::class,
+                factory: static function () use (&$container, &$proxy): ClassWithProperty {
+                    $proxy = $container->resolve(Resolution::for(ClassWithProperty::class)->lazily());
+
+                    return new ClassWithProperty();
+                },
+            ),
+        );
+
+        $container->resolve(Resolution::for(ClassWithProperty::class));
+
+        $this->assertInstanceOf(ClassWithProperty::class, $proxy);
+        $this->assertTrue(new ReflectionClass(ClassWithProperty::class)->isUninitializedLazyObject($proxy));
+    }
+
+    /**
+     * - A #[Ghost] parameter breaks a circular dependency, because the ghost's
+     *   constructor runs on first access, after the class requiring it is cached.
+     */
+    #[Test]
+    public function resolveCircularDependencyThroughGhostParameterResolves(): void
+    {
+        $container = $this->buildContainerWithGhostResolver();
+
+        $first = $container->resolve(Resolution::for(GhostCircularFirst::class));
+
+        $this->assertTrue(new ReflectionClass(GhostCircularSecond::class)->isUninitializedLazyObject($first->second));
+        $this->assertSame($first, $first->second->first);
+    }
+
+    /**
+     * - A ghost initialised inside the constructor that requested it is a circular
+     *   dependency, because that constructor's entry is still on the stack. The ghost
+     *   adds no entry of its own, so the chain names only the requesting class.
+     */
+    #[Test]
+    public function resolveClassInitialisingGhostDependencyInItsConstructorThrowsCircularDependencyException(): void
+    {
+        $container = $this->buildContainerWithGhostResolver();
+
+        $this->expectException(CircularDependencyException::class);
+        $this->expectExceptionMessage(sprintf(
+            'Circular dependency detected: "%1$s" -> "%1$s".',
+            EagerClassUsingGhostDependency::class,
+        ));
+
+        $container->resolve(Resolution::for(EagerClassUsingGhostDependency::class));
+    }
+
+    /**
+     * - A resolution that throws removes its entry, so resolving the same class again
+     *   fails for the same reason rather than as a circular dependency.
+     */
+    #[Test]
+    public function resolveAfterFailedResolutionIsNotReportedAsCircular(): void
+    {
+        $container = $this->buildContainer();
+        $message   = sprintf(
+            'Cannot resolve the parameter "$value" of "%s::__construct".',
+            ClassWithRequiredScalarParam::class,
+        );
+
+        foreach ([1, 2] as $attempt) {
+            try {
+                $container->resolve(Resolution::for(ClassWithRequiredScalarParam::class));
+                $this->fail('Expected a DependencyResolutionException on attempt ' . $attempt);
+            } catch (DependencyResolutionException $e) {
+                $this->assertSame($message, $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * - A circular dependency removes every entry as it unwinds, so a second attempt
+     *   reports the same chain rather than a longer one.
+     */
+    #[Test]
+    public function resolveCircularDependencyTwiceReportsTheSameChain(): void
+    {
+        $container = $this->buildContainer();
+        $message   = sprintf(
+            'Circular dependency detected: "%1$s" -> "%2$s" -> "%1$s".',
+            MutualDependencyFirst::class,
+            MutualDependencySecond::class,
+        );
+
+        foreach ([1, 2] as $attempt) {
+            try {
+                $container->resolve(Resolution::for(MutualDependencyFirst::class));
+                $this->fail('Expected a CircularDependencyException on attempt ' . $attempt);
+            } catch (CircularDependencyException $e) {
+                $this->assertSame($message, $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * - The same class resolved for two parameters of one constructor is not a circular
+     *   dependency, because the first resolution leaves the stack before the second.
+     *   The binding is not shared, so both are constructed rather than one cached.
+     */
+    #[Test]
+    public function resolveSameClassForTwoParametersIsNotCircular(): void
+    {
+        $container = $this->buildContainerWith(
+            new Binding(ClassWithMethods::class, shared: false),
+        );
+
+        $result = $container->resolve(Resolution::for(ClassWithRepeatedDependency::class));
+
+        $this->assertNotSame($result->first, $result->second);
     }
 
     // -------------------------------------------------------------------------
